@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "policy": "公開文献の要約のみを保存し、本文・譜例は保存しない。ライセンスが明確なソースだけを登録する。",
+  "sources": [
+    {
+      "id": "chord-progression",
+      "url": "https://en.wikipedia.org/wiki/Chord_progression",
+      "title": "Chord progression",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "和声進行の基本"
+    },
+    {
+      "id": "harmony",
+      "url": "https://en.wikipedia.org/wiki/Harmony",
+      "title": "Harmony",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "和声・声部連結の基本"
+    },
+    {
+      "id": "melody",
+      "url": "https://en.wikipedia.org/wiki/Melody",
+      "title": "Melody",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "旋律の構成要素"
+    },
+    {
+      "id": "song-structure",
+      "url": "https://en.wikipedia.org/wiki/Song_structure",
+      "title": "Song structure",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "フォーム・セクション構成"
+    },
+    {
+      "id": "groove",
+      "url": "https://en.wikipedia.org/wiki/Groove_(music)",
+      "title": "Groove (music)",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "リズム・グルーヴ"
+    },
+    {
+      "id": "cadence",
+      "url": "https://en.wikipedia.org/wiki/Cadence",
+      "title": "Cadence",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "終止形"
+    },
+    {
+      "id": "ja-chord-progression",
+      "url": "https://ja.wikipedia.org/wiki/コード進行",
+      "title": "コード進行",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "ja",
+      "note": "日本語のコード進行解説"
+    },
+    {
+      "id": "ja-pop-harmony",
+      "url": "https://ja.wikipedia.org/wiki/ポピュラー和声",
+      "title": "ポピュラー和声",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "ja",
+      "note": "ポピュラー音楽の和声"
+    }
+  ]
+}

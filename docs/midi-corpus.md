@@ -102,6 +102,9 @@ npm run eval:corpus-fit -- --live --bars=16 --prompts="疾走感のあるロッ�
 `src/knowledge/corpus.ts` が `corpus-profile.generated.ts` を読み、
 `planMessages()` のシステムプロンプトに「観測された傾向」ブロックを追加します。
 
+> 統計ではなく「言葉で書かれた作曲ノウハウ」を公開文献から集めて注入する仕組みは
+> [web-knowledge.md](web-knowledge.md) を参照してください（A/B で独立に ON/OFF 可能）。
+
 例（実際の出力）:
 
 ```

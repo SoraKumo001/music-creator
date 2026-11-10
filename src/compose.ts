@@ -305,6 +305,8 @@ export type ComposeOptions = {
   corpusPrompt?: boolean;
   /** コーパス統計をルール層へ適用するか (既定 true) */
   corpusRules?: boolean;
+  /** Web由来の知識カードをプロンプトへ入れるか (既定 true。A/B計測用) */
+  webKnowledge?: boolean;
 };
 
 const TEMPS = [0.7, 0.9, 1.1, 0.8, 1.3];
@@ -378,6 +380,7 @@ export async function compose(
     creativity,
     complexity,
     corpus: useCorpusPrompt,
+    web: opts.webKnowledge !== false,
   });
   let plan: Plan | undefined;
   /**

@@ -1,5 +1,6 @@
 import { pickGenreCards } from "./knowledge/genres";
 import { corpusGuidance, corpusProfile } from "./knowledge/corpus";
+import { webKnowledgeGuidance } from "./knowledge/web-knowledge";
 import {
   PROGRESSIONS,
   progressionById,
@@ -205,6 +206,8 @@ export type PlanPromptOptions = {
   complexity?: Complexity;
   /** false にするとコーパス由来の知見を注入しない (A/B 計測用。既定は注入する) */
   corpus?: boolean;
+  /** false にするとWeb由来の知識カードを注入しない (A/B 計測用。既定は注入する) */
+  web?: boolean;
 };
 
 function complexityBlock(
@@ -268,6 +271,7 @@ The arrangement will be ORCHESTRAL (strings, woodwinds, brass, timpani, harp). F
         progressionBlock(progc) +
         (mode !== undefined ? variationBlock(opts.seed!, progc, cards, userPrompt, mode) : "") +
         (opts.corpus === false ? "" : corpusGuidance()) +
+        (opts.web === false ? "" : webKnowledgeGuidance(userPrompt)) +
         complexityBlock(bars, opts.complexity) +
         endingRule +
         ensembleRule,

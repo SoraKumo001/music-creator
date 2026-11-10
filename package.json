@@ -16,6 +16,8 @@
     "compare:corpus": "tsx scripts/compare-corpus.ts",
     "eval:corpus-fit": "tsx scripts/eval-corpus-fit.ts",
     "eval:dissonance": "tsx scripts/eval-dissonance.ts",
+    "collect:knowledge": "tsx scripts/collect-knowledge.ts",
+    "eval:web-knowledge": "tsx scripts/eval-web-knowledge.ts",
     "compose": "tsx scripts/compose.ts"
   },
   "dependencies": {
