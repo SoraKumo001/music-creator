@@ -47,3 +47,40 @@ describe("/api/health", () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 });
+
+describe("OGP injection", () => {
+  const html = `<!doctype html><html><head>
+<link rel="canonical" href="/">
+<meta property="og:url" content="/">
+<meta property="og:image" content="/ogp.png">
+<meta name="twitter:image" content="/ogp.png">
+</head><body></body></html>`;
+
+  const assets = {
+    fetch: async () => new Response(html, { headers: { "Content-Type": "text/html" } }),
+  };
+
+  it("rewrites relative OGP URLs to absolute ones based on the request origin", async () => {
+    const res = await app.request("https://example.com/", undefined, { ASSETS: assets } as never);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('<link rel="canonical" href="https://example.com/">');
+    expect(body).toContain('<meta property="og:url" content="https://example.com/">');
+    expect(body).toContain('content="https://example.com/ogp.png"');
+    // 相対URLが残っていない
+    expect(body).not.toContain('content="/ogp.png"');
+    expect((res.headers.get("Content-Type") ?? "")).toContain("text/html");
+  });
+
+  it("serves index.html for /index.html too", async () => {
+    const res = await app.request("http://127.0.0.1:8788/index.html", undefined, { ASSETS: assets } as never);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("http://127.0.0.1:8788/ogp.png");
+  });
+
+  it("returns 404 when the assets binding is missing", async () => {
+    const res = await app.request("/", undefined, {});
+    expect(res.status).toBe(404);
+  });
+});
+

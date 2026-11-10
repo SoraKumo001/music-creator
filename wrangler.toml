@@ -4,7 +4,10 @@ compatibility_date = "2026-11-01"
 
 [assets]
 directory = "./public"
-run_worker_first = ["/api/*"]
+# Worker から index.html を取得して OGP の絶対URLを注入するため binding を張る
+binding = "ASSETS"
+# "/" も Worker に通す (静的アセットへ直接配信させない)
+run_worker_first = ["/api/*", "/"]
 
 [vars]
 # ---- AI プロバイダ設定 ----

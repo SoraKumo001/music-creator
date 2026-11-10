@@ -13,6 +13,8 @@ type Env = Record<string, string | undefined> & {
   LLM_BASE_URL?: string;
   LLM_MODEL?: string;
   LLM_PROVIDER?: string;
+  /** 静的アセット (wrangler.toml の [assets] binding) */
+  ASSETS?: Fetcher;
 };
 
 const Body = z.object({
@@ -61,6 +63,33 @@ app.post("/api/compose", async (c) => {
 });
 
 app.get("/api/health", (c) => c.json({ ok: true }));
+
+/**
+ * OGP は絶対URLが必要なので、index.html を配信するときに
+ * リクエスト元のオリジンへ書き換える (デプロイ先のドメインが変わっても追従する)。
+ */
+async function serveIndex(c: { req: { url: string }; env: Env; notFound: () => Response | Promise<Response> }): Promise<Response> {
+  const origin = new URL(c.req.url).origin;
+  const assets = c.env.ASSETS;
+  if (!assets) return c.notFound();
+  const assetRes = await assets.fetch(new Request(new URL("/index.html", c.req.url).toString()));
+  if (!assetRes.ok) return c.notFound();
+  const html = await assetRes.text();
+  const injected = html
+    .replace('<link rel="canonical" href="/">', `<link rel="canonical" href="${origin}/">`)
+    .replace('<meta property="og:url" content="/">', `<meta property="og:url" content="${origin}/">`)
+    .replaceAll('content="/ogp.png"', `content="${origin}/ogp.png"`);
+  return new Response(injected, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
+    },
+  });
+}
+
+app.get("/", (c) => serveIndex(c));
+app.get("/index.html", (c) => serveIndex(c));
 
 /** 現在の AI 設定の要約 (APIキーは返さない)。UI・動作確認用 */
 app.get("/api/config", (c) => {
