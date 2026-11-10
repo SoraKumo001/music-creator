@@ -1,8 +1,18 @@
 import { pickGenreCards } from "./knowledge/genres";
 import { corpusGuidance } from "./knowledge/corpus";
-import { PROGRESSIONS, progressionById, type ProgressionCard } from "./knowledge/progressions";
+import {
+  PROGRESSIONS,
+  progressionById,
+  type ProgressionCard,
+} from "./knowledge/progressions";
 import type { ChatMessage } from "./llm/provider";
-import { SECTION_ROLES, type Complexity, type Ensemble, type Plan, type Section } from "./plan";
+import {
+  SECTION_ROLES,
+  type Complexity,
+  type Ensemble,
+  type Plan,
+  type Section,
+} from "./plan";
 import { BASS_STYLES, COMP_STYLES } from "./theory/accompaniment";
 import { DRUM_PATTERN_NAMES } from "./theory/drums";
 import { realizeNumerals } from "./theory/roman";
@@ -11,9 +21,13 @@ import { hashSeed, mulberry32, sampleSeeded } from "./util/random";
 const list = (a: readonly string[]) => a.map((n) => `"${n}"`).join(", ");
 
 /** ジャンルに合う進行カード。該当なしならseedで汎用カードからサンプル (毎回同じ4枚にしない) */
-function progressionCards(userPrompt: string, seed?: number): ProgressionCard[] {
+function progressionCards(
+  userPrompt: string,
+  seed?: number,
+): ProgressionCard[] {
   const ids = new Set<string>();
-  for (const genre of pickGenreCards(userPrompt)) for (const id of genre.progressions ?? []) ids.add(id);
+  for (const genre of pickGenreCards(userPrompt))
+    for (const id of genre.progressions ?? []) ids.add(id);
   const chosen = [...ids].flatMap((id) => {
     const card = progressionById(id);
     return card ? [card] : [];
@@ -37,7 +51,7 @@ function progressionBlock(userPrompt: string, seed?: number): string {
 ${cards.map(progressionLine).join("\n")}
 
 Harmony rules:
-- Keep each skeleton's roman numerals. You may substitute at most one chord per section, and only for a chord with the same function.
+- Keep each skeleton's roman numerals and repeat the 4-bar skeleton across an 8-bar section (or repeat the same progression when verse/chorus returns) so the listener hears a clear, recurring harmonic theme. You may substitute at most one chord per section, and only for a chord with the same function.
 - Write the chords as actual symbols in your chosen key, not as roman numerals.
 - Put chord changes on whole beats, 1–2 per bar, and keep the skeleton's harmonic rhythm.
 - End each section with a cadence (V–I, IV–I, or V–vi); the song must end on the tonic.
@@ -81,25 +95,36 @@ export type PlanPromptOptions = {
   corpus?: boolean;
 };
 
-function complexityBlock(bars: number, complexity: Complexity = "standard"): string {
+function complexityBlock(
+  bars: number,
+  complexity: Complexity = "standard",
+): string {
   if (complexity === "simple") {
     return `\n\nSimplicity: keep the song simple — at most 2 sections, diatonic chords only, no keyChanges, swing 0.`;
   }
   if (complexity === "rich" || bars >= 16) {
-    const sectionHint = bars >= 24
-      ? `\n- Section length: aim for 6-8 bars per section (avoid making every section exactly 4 bars); the reference corpus averages about 6 bars.`
-      : "";
-    return `\n\nAmbition (longer song): use 4-6 sections with distinct roles including a chorus and a bridge or break.
+    const sectionHint =
+      bars >= 24
+        ? `\n- Section structure & thematic return: use 4–8 bar sections and bring back "verse" or "chorus" at least twice (e.g. intro -> verse -> chorus -> bridge -> chorus) with the same chord progression so the main theme recurs clearly.`
+        : "";
+    return `\n\nAmbition (longer song): use 4-6 sections with distinct roles including a chorus and a bridge or break.${sectionHint}
 - keyChanges: for 16+ bars you MAY modulate once (e.g. up a whole step for the final chorus, or to a closely related key for the bridge). List at most 2 entries; the first bar is 0. End the song in the final key.
 - Contrast the bridge: different feel, sparser texture, or a new borrowed color; build back with prechorus "swell" 1.`;
   }
   return "";
 }
 
-export function planMessages(userPrompt: string, bars: number, loop = false, ensemble: Ensemble = "band", opts: PlanPromptOptions = {}): ChatMessage[] {
+export function planMessages(
+  userPrompt: string,
+  bars: number,
+  loop = false,
+  ensemble: Ensemble = "band",
+  opts: PlanPromptOptions = {},
+): ChatMessage[] {
   const cards = pickGenreCards(userPrompt);
   const knowledge = cards.length
-    ? "\n\nGenre guidance:\n" + cards.map((c) => `- [${c.id}] ${c.card}`).join("\n")
+    ? "\n\nGenre guidance:\n" +
+      cards.map((c) => `- [${c.id}] ${c.card}`).join("\n")
     : "";
   const endingRule = loop
     ? `
@@ -111,13 +136,24 @@ This song will be LOOPED. The last bar is a turnaround, not an ending:
     : `
 
 - End with a cadence that resolves to the tonic chord in the final bar.`;
-  const ensembleRule = ensemble === "orchestra"
-    ? `
+  const ensembleRule =
+    ensemble === "orchestra"
+      ? `
 
 The arrangement will be ORCHESTRAL (strings, woodwinds, brass, timpani, harp). Focus on chords, sections and the melody; "comp", "bass" and "drums" styles are ignored. Use energy 1 for intimate passages and energy 3 for the full tutti.`
-    : "";
+      : "";
   return [
-    { role: "system", content: PLAN_SYSTEM + knowledge + progressionBlock(userPrompt, opts.seed) + (opts.corpus === false ? "" : corpusGuidance()) + complexityBlock(bars, opts.complexity) + endingRule + ensembleRule },
+    {
+      role: "system",
+      content:
+        PLAN_SYSTEM +
+        knowledge +
+        progressionBlock(userPrompt, opts.seed) +
+        (opts.corpus === false ? "" : corpusGuidance()) +
+        complexityBlock(bars, opts.complexity) +
+        endingRule +
+        ensembleRule,
+    },
     { role: "user", content: `Request: ${userPrompt}\nLength: ${bars} bars.` },
   ];
 }
@@ -126,14 +162,14 @@ const MELODY_SYSTEM = `You are a professional melody writer. Output ONLY one com
 Each note is [MIDI note number, start in beats from the beginning of the song, duration in beats, velocity 1-127]. A quarter note = 1 beat.
 
 Rules:
-- Single-line melody (no simultaneous notes), mostly within MIDI 60-84.
+- Single-line melody (no simultaneous notes), spanning MIDI 60-88.
 - On strong beats (first and middle beat of a bar) and on long notes, use tones of the current chord. Use scale tones as passing notes between them.
-- Build the melody from a short motif: state it, repeat it with variation, then contrast it in the next section. Reuse rhythms across bars.
-- Shape each phrase with a clear peak/climax. Mix mostly stepwise motion with occasional expressive leaps (e.g. 5th, octave) for emotional hooks.
-- Phrasing and breathing (essential): divide your melody into natural 2-bar or 4-bar phrases. End each phrase with a rest of 1-2 beats (e.g. leave the 4th beat or beats 3-4 open as a breathing pause before the next phrase). Do not play non-stop notes through every single measure without pause.
-- Mix note lengths (e.g. eighths, quarters, dotted and held notes), use syncopation across beats, and leave space for other instruments.
+- Thematic motif & hook (essential): build each section around an unmistakable 2-bar melodic motif (a distinctive rhythm + interval hook). State the motif in bars 1-2 of the section, repeat it in bars 3-4 transposed to fit the chord change (A -> A'), then develop or answer it in the next bars (B -> A''). When a section role (such as verse or chorus) returns later in the song, bring back its main motif so the song has a memorable theme.
+- Register contrast & climax: place verse/intro melodies in the mid register (MIDI 62-76) and lift chorus/climax melodies into the high register (MIDI 72-86) with a clear peak note. Mix stepwise motion with expressive hook leaps (4th, 5th, 6th, octave).
+- Active melodic drive & phrasing: write 5-8 notes per bar in energetic sections (or 3-5 in slow/calm sections). End 2-bar or 4-bar phrases with a concise breath rest of 0.5-1 beat on the final beat of the phrase so the melody breathes without feeling sparse or empty.
+- Mix note lengths (sixteenths, eighths, dotted eighths, quarters), use syncopation across beats, and lock into the groove.
 - Follow the section energy: sparse or silent in energy 1 sections, most active and highest in energy 3 sections.
-- Velocity dynamics: vary velocity naturally (65-110). Give peak and accented notes higher velocity (95-110) and softer touches (65-80) to pickup/passing notes. Do not output constant velocity.`;
+- Velocity dynamics: vary velocity naturally (75-118). Give peak and accented hook notes strong velocity (100-118) and softer touches (72-85) to pickup/passing notes. Do not output constant velocity.`;
 
 export type MelodyPromptOptions = {
   /** この範囲の小節だけ書く (0始まり、toBarは含まない)。長い曲の分割生成用 */
@@ -141,12 +177,21 @@ export type MelodyPromptOptions = {
   toBar?: number;
   /** 直前フレーズの末尾 (継続性のため)。{pitch, start} の最大4音 */
   prevTail?: { pitch: number; start: number }[];
+  /** 前半で確立した主題モチーフ (セクション再登場時の主題再現用) */
+  themeHints?: {
+    role: string;
+    notes: { pitch: number; start: number; duration: number }[];
+  }[];
   /** 対旋律用: 主旋律のこの範囲の音 (pitch,start)。指定時は対旋律の指示に切替 */
   counterTo?: { pitch: number; start: number; duration: number }[];
 };
 
 export function melodyMessages(
-  userPrompt: string, plan: Plan, sections: Section[], bars: number, beatsPerBar: number,
+  userPrompt: string,
+  plan: Plan,
+  sections: Section[],
+  bars: number,
+  beatsPerBar: number,
   opts: MelodyPromptOptions = {},
 ): ChatMessage[] {
   const fromBar = opts.fromBar ?? 0;
@@ -159,24 +204,48 @@ export function melodyMessages(
     const e = s + beatsPerBar;
     const inBar = sorted.filter(([t]) => t >= s && t < e);
     const carry = [...sorted].reverse().find(([t]) => t <= s);
-    const parts = inBar.length && inBar[0]![0] === s ? inBar : [...(carry ? [[s, carry[1]] as [number, string]] : []), ...inBar];
-    chordLines.push(`bar ${b + 1} (beats ${s - offset}-${e - offset}): ` + parts.map(([t, sym]) => `${sym}@${t - offset}`).join(" "));
+    const parts =
+      inBar.length && inBar[0]![0] === s
+        ? inBar
+        : [...(carry ? [[s, carry[1]] as [number, string]] : []), ...inBar];
+    chordLines.push(
+      `bar ${b + 1} (beats ${s - offset}-${e - offset}): ` +
+        parts.map(([t, sym]) => `${sym}@${t - offset}`).join(" "),
+    );
   }
   const sectionLines = sections.map(
-    (s) => `- ${s.name} (${s.role}): bars ${s.startBar + 1}-${s.startBar + s.bars}, energy ${s.gain < 1 ? 1 : s.gain > 1 ? 3 : 2}${s.swell !== 0 ? `, swell ${s.swell > 0 ? "up" : "down"}` : ""}`,
+    (s) =>
+      `- ${s.name} (${s.role}): bars ${s.startBar + 1}-${s.startBar + s.bars}, energy ${s.gain < 1 ? 1 : s.gain > 1 ? 3 : 2}${s.swell !== 0 ? `, swell ${s.swell > 0 ? "up" : "down"}` : ""}`,
   );
   const user = [
     `Song request: ${userPrompt}`,
     `Title: ${plan.title}`,
     `Key: ${plan.key}, tempo ${plan.bpm} BPM, time signature ${plan.timeSignature.join("/")}, ${bars} bars (${bars * beatsPerBar} beats).`,
     ...(fromBar > 0 || toBar < bars
-      ? [`Range: write ONLY bars ${fromBar + 1}-${toBar} (beats 0-${(toBar - fromBar) * beatsPerBar} relative to bar ${fromBar + 1}). Do not write notes outside this range.`]
+      ? [
+          `Range: write ONLY bars ${fromBar + 1}-${toBar} (beats 0-${(toBar - fromBar) * beatsPerBar} relative to bar ${fromBar + 1}). Do not write notes outside this range.`,
+        ]
       : []),
     ...(opts.prevTail && opts.prevTail.length > 0
-      ? [`Previous phrase ends with: ${opts.prevTail.map((n) => `${n.pitch}@${n.start - offset}`).join(" ")}. Start this phrase as a natural continuation.`]
+      ? [
+          `Previous phrase ends with: ${opts.prevTail.map((n) => `${n.pitch}@${n.start - offset}`).join(" ")}. Start this phrase as a natural continuation.`,
+        ]
+      : []),
+    ...(opts.themeHints && opts.themeHints.length > 0
+      ? [
+          `Established section motifs (reuse/adapt the matching motif when the same section role returns so the main theme is unmistakable):\n` +
+            opts.themeHints
+              .map(
+                (h) =>
+                  `- ${h.role} motif (pitch@beat+dur): ${h.notes.map((n) => `${n.pitch}@${Math.round(n.start * 4) / 4}+${Math.round(n.duration * 4) / 4}`).join(" ")}`,
+              )
+              .join("\n"),
+        ]
       : []),
     ...(opts.counterTo
-      ? [`Main melody in this range (pitch@start): ${opts.counterTo.map((n) => `${n.pitch}@${n.start - offset}`).join(" ")}.`]
+      ? [
+          `Main melody in this range (pitch@start): ${opts.counterTo.map((n) => `${n.pitch}@${n.start - offset}`).join(" ")}.`,
+        ]
       : []),
     `Sections:\n${sectionLines.join("\n")}`,
     `Chords:\n${chordLines.join("\n")}`,
@@ -194,13 +263,15 @@ export function melodyMessages(
 - Stay within the given range.`
         : `- This is a middle phrase: end openly (no final tonic resolution) so the next phrase can continue. Leave a short breath before the range end.
 - Stay within the given range.`;
-  const ensembleRule = plan.ensemble === "orchestra"
-    ? "\n- This is an orchestral piece: the melody will be played by the first violin. Write a singable, sustained line in the mid-high register and leave space for the accompaniment."
-    : "";
+  const ensembleRule =
+    plan.ensemble === "orchestra"
+      ? "\n- This is an orchestral piece: the melody will be played by the first violin. Write a singable, sustained line in the mid-high register and leave space for the accompaniment."
+      : "";
   return [
-    { role: "system", content: MELODY_SYSTEM + "\n" + endingRule + ensembleRule },
+    {
+      role: "system",
+      content: MELODY_SYSTEM + "\n" + endingRule + ensembleRule,
+    },
     { role: "user", content: user },
   ];
 }
-
-

@@ -32,32 +32,42 @@ export function colorPlan(plan: Plan, bars: number, seed: number, opts: ColorOpt
 
   const chords = [...plan.chords].sort((a, b) => a[0] - b[0]).map(([beat, symbol]) => [beat, symbol] as [number, string]);
   let changes = 0;
+  // 4小節周期で同じ (小節内位相, 現在コード, 次コード) には同じ色彩化決定を再利用し、
+  // 反復進行のテーマ性 (1周目と2周目の一貫性) を壊さないようにする
+  const decisions = new Map<string, string | null>();
   for (let i = 1; i < chords.length - 1; i++) {
     if (changes >= maxChanges) break;
     const [beat, symbol] = chords[i]!;
     // 曲の頭と終わり、転調の直後は避ける
     if (beat < 2 * beatsPerBar || beat >= totalBeats - 2 * beatsPerBar) continue;
     const next = chords[i + 1]![1];
-    const r = rand();
-    let replacement: string | null = null;
+    const barPhase = Math.floor(beat / beatsPerBar) % 4;
+    const slotKey = `${barPhase}:${symbol}->${next}`;
 
-    if (r < 0.35 * strength && isPlainTriad(symbol)) {
-      // sus4: 参照コーパスで多用される (解決しない浮遊感)
-      replacement = `${symbol}sus4`;
-    } else if (r < 0.65 * strength) {
-      // 二次ドミナント: 次の和音へ V7 で導く
-      try {
-        const targetRoot = parseChord(next).root;
-        const domRoot = (targetRoot + 7) % 12;
-        const currentRoot = parseChord(symbol).root;
-        if (domRoot !== currentRoot && !next.includes("/")) {
-          replacement = `${pcName(domRoot, false)}7`;
-        }
-      } catch { /* noop */ }
-    } else if (r < 0.8 * strength) {
-      // 借用: iv / bVII / bVI (同主短調・ミクソリディアンからの色)
-      const borrowed = borrowedCandidates(key);
-      if (borrowed.length > 0) replacement = borrowed[Math.floor(rand() * borrowed.length)]!;
+    let replacement: string | null = null;
+    if (decisions.has(slotKey)) {
+      replacement = decisions.get(slotKey) ?? null;
+    } else {
+      const r = rand();
+      if (r < 0.35 * strength && isPlainTriad(symbol)) {
+        // sus4: 参照コーパスで多用される (解決しない浮遊感)
+        replacement = `${symbol}sus4`;
+      } else if (r < 0.65 * strength) {
+        // 二次ドミナント: 次の和音へ V7 で導く
+        try {
+          const targetRoot = parseChord(next).root;
+          const domRoot = (targetRoot + 7) % 12;
+          const currentRoot = parseChord(symbol).root;
+          if (domRoot !== currentRoot && !next.includes("/")) {
+            replacement = `${pcName(domRoot, false)}7`;
+          }
+        } catch { /* noop */ }
+      } else if (r < 0.8 * strength) {
+        // 借用: iv / bVII / bVI (同主短調・ミクソリディアンからの色)
+        const borrowed = borrowedCandidates(key);
+        if (borrowed.length > 0) replacement = borrowed[Math.floor(rand() * borrowed.length)]!;
+      }
+      decisions.set(slotKey, replacement);
     }
 
     if (!replacement || replacement === symbol) continue;

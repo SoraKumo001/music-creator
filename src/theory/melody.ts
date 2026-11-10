@@ -1,4 +1,4 @@
-import { keyAtBeat } from "../plan";
+import { keyAtBeat, type Plan, type Section } from "../plan";
 import type { Note } from "../score";
 import { chordAt, type ChordEvent } from "./accompaniment";
 import { parseKey, SCALES, snapToScale } from "./index";
@@ -76,15 +76,30 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
   const restRate = rests / Math.max(1, ctx.bars / 2);
   const phrasing = band(restRate, 0.35, 1.6, 0.45);
 
-  // モチーフ: 同じリズム型の小節がどれだけあるか(全く無い/全部同じ はどちらも減点)
+  // モチーフ: 小節ごとのリズム型 + 音程輪郭(上下方向)の反復度を合わせて評価
   const barRhythm = Array.from({ length: ctx.bars }, (_, b) =>
     ns.filter((n) => Math.floor(n.start / ctx.beatsPerBar) === b).map((n) => Math.round((n.start % ctx.beatsPerBar) * 4)).join(","),
   );
+  const barContour = Array.from({ length: ctx.bars }, (_, b) => {
+    const inB = ns.filter((n) => Math.floor(n.start / ctx.beatsPerBar) === b);
+    if (inB.length < 2) return "";
+    return inB.slice(1).map((n, i) => {
+      const d = n.pitch - inB[i]!.pitch;
+      return d === 0 ? "0" : d > 0 ? (d <= 2 ? "+s" : "+l") : (d >= -2 ? "-s" : "-l");
+    }).join(",");
+  });
   const filled = barRhythm.filter((r) => r !== "");
   const counts = new Map<string, number>();
   for (const r of filled) counts.set(r, (counts.get(r) ?? 0) + 1);
-  const repeated = filled.filter((r) => counts.get(r)! > 1).length / Math.max(1, filled.length);
-  const motif = band(repeated, 0.25, 0.75, 0.25);
+  const rhythmRepeated = filled.filter((r) => counts.get(r)! > 1).length / Math.max(1, filled.length);
+  const cFilled = barContour.filter((c) => c !== "");
+  const cCounts = new Map<string, number>();
+  for (const c of cFilled) cCounts.set(c, (cCounts.get(c) ?? 0) + 1);
+  const contourRepeated = cFilled.length > 0
+    ? cFilled.filter((c) => cCounts.get(c)! > 1).length / cFilled.length
+    : rhythmRepeated;
+  const repeated = rhythmRepeated * 0.65 + contourRepeated * 0.35;
+  const motif = band(repeated, 0.25, 0.8, 0.25);
 
   // 空白小節があってもフレーズの休止として許容(0.55〜1.0)
   const coverage = band(filled.length / ctx.bars, 0.55, 1, 0.35);
@@ -145,4 +160,199 @@ export function polishMelody(notes: Note[], ctx: MelodyContext): Note[] {
 
     return { ...n, pitch, duration: Math.max(0.0625, Math.min(n.duration, cap)), velocity };
   });
+}
+
+/** 指定ピッチに最も近いコードトーン (またはスケール音) へ吸着させる */
+function nearestChordOrScalePitch(targetPitch: number, chordTones: number[], scaleSet: Set<number>, preferChordTone: boolean): number {
+  const pool = preferChordTone && chordTones.length > 0 ? new Set(chordTones) : scaleSet;
+  for (let d = 0; d <= 6; d++) {
+    if (pool.has(((targetPitch + d) % 12 + 12) % 12)) return targetPitch + d;
+    if (pool.has(((targetPitch - d) % 12 + 12) % 12)) return targetPitch - d;
+  }
+  return targetPitch;
+}
+
+/**
+ * モチーフ小節群 (sourceStart..sourceStart+len) を targetStart へ移調・転写する。
+ * 強拍は移動先のコードトーンへ、経過音はスケール音へ吸着させることで、
+ * リズムと音程輪郭 (フック) を保ったまま新しいコード進行に適合させる。
+ */
+function transposeMotifBlock(
+  sourceNotes: Note[],
+  sourceStart: number,
+  targetStart: number,
+  blockBeats: number,
+  ctx: MelodyContext,
+  opts: { pitchShift?: number; resolveEndToRoot?: boolean } = {},
+): Note[] {
+  if (sourceNotes.length === 0) return [];
+  const srcChord = chordAt(ctx.chords, sourceStart);
+  const dstChord = chordAt(ctx.chords, targetStart);
+  // ルート差を半音単位 (-5..+6) で計算し、モチーフ全体の基準シフト量とする
+  let rootDiff = ((dstChord.root - srcChord.root + 18) % 12) - 6;
+  if (Math.abs(rootDiff) > 5) rootDiff = 0;
+  const shift = rootDiff + (opts.pitchShift ?? 0);
+
+  return sourceNotes.map((n, idx) => {
+    const rel = n.start - sourceStart;
+    const newStart = targetStart + Math.max(0, Math.min(blockBeats - 0.125, rel));
+    const inBar = newStart % ctx.beatsPerBar;
+    const isStrong = Math.abs(inBar) < 0.05 || Math.abs(inBar - ctx.beatsPerBar / 2) < 0.05 || n.duration >= 1;
+    const local = localScale(ctx, newStart);
+    const ch = chordAt(ctx.chords, newStart);
+    let pitch = nearestChordOrScalePitch(n.pitch + shift, ch.tones, local.set, isStrong);
+    if (opts.resolveEndToRoot && idx === sourceNotes.length - 1) {
+      // フレーズ末尾は主音またはコードのルート/3度へ着地させる
+      pitch = nearestChordOrScalePitch(pitch, [local.root, ch.root], local.set, true);
+    }
+    return { ...n, pitch, start: newStart };
+  });
+}
+
+/**
+ * 主題 (テーマ) の強化・反復・音域クライマックス形成パス:
+ * 1. 同一ロール (verse / chorus) が再登場した際、初回セクションの主題モチーフを再現する
+ * 2. セクション内部 (4小節以上) で前半2小節のモチーフが後半で全く反復されていない場合、A -> A' 変奏を形成する
+ * 3. アップテンポ/高エネルギー区間で長音ばかりの希薄な小節にモチーフ的なリズム分割を加える
+ * 4. Verse (中音域 62-77) と Chorus (高音域 70-86) の音域階層とベロシティ存在感を明確化する
+ */
+export function developTheme(
+  notes: Note[],
+  plan: Plan,
+  sections: Section[],
+  beatsPerBar: number,
+  opts: { dense?: boolean } = {},
+): Note[] {
+  if (notes.length < 2 || sections.length === 0) return notes;
+  const totalBars = Math.round(sections.reduce((acc, s) => Math.max(acc, s.startBar + s.bars), 0));
+  if (totalBars < 2) return notes;
+
+  const events: ChordEvent[] = plan.chords.map(([start, symbol]) => ({ start, symbol }));
+  const ctx: MelodyContext = {
+    key: plan.key,
+    chords: events,
+    bars: totalBars,
+    beatsPerBar,
+    keyChanges: plan.keyChanges,
+  };
+
+  let current = [...notes].sort((a, b) => a.start - b.start);
+  const blockBars = 2;
+  const blockBeats = blockBars * beatsPerBar;
+
+  // ロールごとの初回 2小節モチーフを記録
+  const roleMotifs = new Map<string, { start: number; notes: Note[] }>();
+
+  for (const sec of sections) {
+    if (sec.role === "break" || sec.role === "outro" || sec.bars < 2) continue;
+    const secStart = sec.start;
+    const secEnd = sec.end;
+    const firstBlockEnd = Math.min(secEnd, secStart + blockBeats);
+    let headNotes = current.filter((n) => n.start >= secStart - 1e-4 && n.start < firstBlockEnd - 1e-4);
+
+    // (1) 同一ロール (verse / chorus) の2回目以降なら、初回の主題モチーフを前半2小節に再現
+    const saved = roleMotifs.get(sec.role);
+    if (saved && (sec.role === "verse" || sec.role === "chorus")) {
+      const restOfSong = current.filter((n) => n.start < secStart - 1e-4 || n.start >= firstBlockEnd - 1e-4);
+      const reprised = transposeMotifBlock(saved.notes, saved.start, secStart, blockBeats, ctx, {
+        pitchShift: sec.role === "chorus" ? 0 : 0,
+      });
+      current = [...restOfSong, ...reprised].sort((a, b) => a.start - b.start);
+      headNotes = reprised;
+    } else if (headNotes.length >= 3 && (sec.role === "verse" || sec.role === "chorus" || sec.role === "other")) {
+      roleMotifs.set(sec.role, { start: secStart, notes: headNotes });
+    }
+
+    // (2) セクション内でのモチーフ反復 (A -> A'): 4小節以上のセクションで後半ブロックが希薄または無関係なら応答フレーズを作る
+    if (sec.bars >= 4 && headNotes.length >= 3) {
+      const answerStart = secStart + blockBeats;
+      const answerEnd = Math.min(secEnd, answerStart + blockBeats);
+      const ansNotes = current.filter((n) => n.start >= answerStart - 1e-4 && n.start < answerEnd - 1e-4);
+      const headSteps = new Set(headNotes.map((n) => Math.round(((n.start - secStart) % beatsPerBar) * 4)));
+      const ansSteps = ansNotes.map((n) => Math.round(((n.start - answerStart) % beatsPerBar) * 4));
+      const overlap = ansSteps.filter((s) => headSteps.has(s)).length / Math.max(1, ansSteps.length);
+
+      // 応答側が極端に少ない、またはリズムの共通性が低すぎる場合はモチーフ変奏 (A') を転写
+      if (ansNotes.length < Math.max(3, Math.floor(headNotes.length * 0.6)) || overlap < 0.25) {
+        const rest = current.filter((n) => n.start < answerStart - 1e-4 || n.start >= answerEnd - 1e-4);
+        const varied = transposeMotifBlock(headNotes, secStart, answerStart, blockBeats, ctx, {
+          resolveEndToRoot: sec.bars === 4,
+        });
+        current = [...rest, ...varied].sort((a, b) => a.start - b.start);
+      }
+    }
+  }
+
+  // (3) 推進力の補強: dense 指定時、エネルギー2以上のセクションで長音のみの希薄な小節をモチーフ的に分割
+  if (opts.dense !== false) {
+    const enriched: Note[] = [];
+    for (let bar = 0; bar < totalBars; bar++) {
+      const bStart = bar * beatsPerBar;
+      const bEnd = bStart + beatsPerBar;
+      const sec = sections.find((s) => bStart >= s.start - 1e-4 && bStart < s.end - 1e-4) ?? sections[sections.length - 1]!;
+      const barNotes = current.filter((n) => n.start >= bStart - 1e-4 && n.start < bEnd - 1e-4);
+      const isFinalBar = !plan.loop && bar === totalBars - 1;
+      const isPhraseTailBar = (bar - sec.startBar + 1) % 4 === 0;
+      const energy = sec.gain < 1 ? 1 : sec.gain > 1 ? 3 : 2;
+
+      if (isFinalBar || energy <= 1 || sec.role === "break" || sec.role === "outro" || barNotes.length >= 6) {
+        enriched.push(...barNotes);
+        continue;
+      }
+
+      const nextBarNotes: Note[] = [];
+      for (let i = 0; i < barNotes.length; i++) {
+        const n = barNotes[i]!;
+        const nextStart = barNotes[i + 1]?.start ?? bEnd;
+        const avail = Math.min(n.duration, nextStart - n.start);
+        const posInBar = n.start - bStart;
+        // フレーズ終端小節の後半拍は呼吸として残す
+        if (isPhraseTailBar && posInBar >= beatsPerBar - 1.5) {
+          nextBarNotes.push(n);
+          continue;
+        }
+        const local = localScale(ctx, n.start);
+        const ch = chordAt(ctx.chords, n.start);
+        if (avail >= 1.5 && nextBarNotes.length + (barNotes.length - i) < 7) {
+          // 付点8分 (0.75) + 16分 (0.25) + 8分 (0.5) の推進力あるフック分割
+          const stepUp = nearestChordOrScalePitch(n.pitch + 2, ch.tones, local.set, false);
+          const target = nearestChordOrScalePitch(n.pitch + (bar % 2 === 0 ? 3 : -2), ch.tones, local.set, true);
+          nextBarNotes.push(
+            { ...n, duration: 0.75 },
+            { pitch: stepUp, start: n.start + 0.75, duration: 0.25, velocity: Math.max(70, n.velocity - 10) },
+            { pitch: target, start: n.start + 1.0, duration: Math.max(0.25, avail - 1.05), velocity: Math.min(120, n.velocity + 4) },
+          );
+        } else if (avail >= 1.0 && nextBarNotes.length + (barNotes.length - i) < 6) {
+          // 8分 (0.5) + 8分 (0.5) のスケール順次・コードトーン分割
+          const pass = nearestChordOrScalePitch(n.pitch + (i % 2 === 0 ? 2 : -2), ch.tones, local.set, false);
+          nextBarNotes.push(
+            { ...n, duration: 0.5 },
+            { pitch: pass, start: n.start + 0.5, duration: Math.max(0.25, avail - 0.55), velocity: Math.max(72, n.velocity - 8) },
+          );
+        } else {
+          nextBarNotes.push(n);
+        }
+      }
+      enriched.push(...nextBarNotes);
+    }
+    current = enriched;
+  }
+
+  // (4) セクション役割ごとの音域階層化 (Verse: 62..77 / Chorus & Climax: 69..86) と主旋律の存在感強化
+  const shaped = current.map((n) => {
+    const sec = sections.find((s) => n.start >= s.start - 1e-4 && n.start < s.end - 1e-4) ?? sections[sections.length - 1]!;
+    const isClimax = sec.role === "chorus" || sec.role === "solo" || sec.gain > 1;
+    let pitch = n.pitch;
+    if (isClimax) {
+      while (pitch < 68) pitch += 12;
+      while (pitch > 88) pitch -= 12;
+    } else {
+      while (pitch < 60) pitch += 12;
+      while (pitch > 79) pitch -= 12;
+    }
+    const boost = isClimax ? 12 : 6;
+    return { ...n, pitch, velocity: Math.max(72, Math.min(124, (n.velocity ?? 90) + boost)) };
+  });
+
+  return polishMelody(shaped, ctx);
 }

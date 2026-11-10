@@ -197,6 +197,15 @@ export type CorpusHintOptions = {
   dense?: boolean;
 };
 
+/** 静か・ローファイ・バラード・ピアノ独奏など、過密な16分刻みを強制すべきでないプロンプトか判定 */
+export function isCalmPrompt(prompt?: string): boolean {
+  const p = (prompt ?? "").toLowerCase();
+  const calmKeys = ["静か", "ローファイ", "lofi", "lo-fi", "チル", "chill", "バラード", "ballad", "しっとり", "クラシック", "classical", "アンビエント", "ambient"];
+  const energeticKeys = ["疾走", "バトル", "戦闘", "ロック", "rock", "edm", "ダンス", "アップテンポ", "ゲーム", "game", "ボス"];
+  if (energeticKeys.some((k) => p.includes(k))) return false;
+  return calmKeys.some((k) => p.includes(k));
+}
+
 /** メロディ用音色のジャンル別優先順 */
 function melodyFamilyOrder(prompt?: string): string[] {
   const p = (prompt ?? "").toLowerCase();
@@ -251,7 +260,7 @@ export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan
     // ただし LLM が明確に選んだスタイル (刻む系) は尊重し、持続系のみ置換する。
     const sustainedComp = s.comp === "pad" || s.comp === "block";
     const sustainedBass = s.bass === "root" || s.bass === "rootFifth";
-    const denseSection = opts.dense === true && s.energy >= 2;
+    const denseSection = opts.dense === true && !isCalmPrompt(opts.prompt) && s.energy >= 2;
     return {
       ...s,
       comp: s.comp === "pad" ? hints.compStyles[0] ?? s.comp : denseSection && sustainedComp ? "arpeggio16" : s.comp,

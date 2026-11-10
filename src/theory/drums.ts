@@ -298,6 +298,25 @@ export function generateDrums(
               velocity: vel(80, g),
             });
           }
+          // コーパス抽出パターンも小節ごとに微変化させる (単調さを避ける)
+          if (sec.drums.startsWith("corpus")) {
+            if (b % 2 === 1) {
+              notes.push({
+                pitch: GM_DRUMS.snare,
+                start: base + 2.75,
+                duration: 0.25,
+                velocity: vel(40, g),
+              });
+            }
+            if (b % 4 === 3) {
+              notes.push({
+                pitch: GM_DRUMS.openHat,
+                start: base + beatsPerBar - 0.5,
+                duration: 0.25,
+                velocity: vel(72, g),
+              });
+            }
+          }
         }
       }
       if (isFill) {

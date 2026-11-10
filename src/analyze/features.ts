@@ -399,7 +399,15 @@ function tempoStats(midi: ParsedMidi): { bpm: number; bpmMin: number; bpmMax: nu
   };
 }
 
-export function extractFeatures(name: string, midi: ParsedMidi): MidiFeatures {
+export type FeatureOptions = {
+  /**
+   * 旋律として扱う MIDI チャンネル。指定すると旋律系の指標をそのチャンネルだけで計算する。
+   * 未指定なら最高声部 (全チャンネル) を旋律とみなす (コーパスはパート情報が無いため)。
+   */
+  melodyChannel?: number;
+};
+
+export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOptions = {}): MidiFeatures {
   const division = midi.division;
   const notes = allNotes(midi);
   const ts = mostCommonTimeSignature(midi);
@@ -465,7 +473,10 @@ export function extractFeatures(name: string, midi: ParsedMidi): MidiFeatures {
   const harmony = analyzeHarmony(notes.filter((n) => n.channel !== 9), midi, barTicks, key.key, startTick);
 
   // 旋律 (最高声部)
-  const top = extractTopLine(notes.filter((n) => n.channel !== 9), barTicks, bars, startTick);
+  const melodySource = opts.melodyChannel === undefined
+    ? notes.filter((n) => n.channel !== 9)
+    : notes.filter((n) => n.channel === opts.melodyChannel);
+  const top = extractTopLine(melodySource, barTicks, bars, startTick);
   const intervals = new Array(13).fill(0);
   for (let i = 1; i < top.length; i++) {
     const d = Math.abs(top[i]!.pitch - top[i - 1]!.pitch);
@@ -549,4 +560,5 @@ export function programFamily(program: number): string {
   if (program <= 111) return "synthFx";
   return "percussive";
 }
+
 

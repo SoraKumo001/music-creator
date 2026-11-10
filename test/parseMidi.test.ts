@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { extractFeatures } from "../src/analyze/features";
 import { parseMidi } from "../src/midi/parseMidi";
 import { scoreToMidi } from "../src/midi/toMidi";
 import { ScoreSchema } from "../src/score";
@@ -67,4 +68,27 @@ describe("parseMidi", () => {
     expect(total).toBeGreaterThan(50);
     expect(midi.durationSeconds).toBeGreaterThan(5);
   });
+
+  it("can limit melody metrics to one channel", () => {
+    const score = ScoreSchema.parse({
+      bpm: 120,
+      tracks: [
+        { name: "Melody", program: 0, channel: 0, notes: [
+          { pitch: 72, start: 0, duration: 1, velocity: 90 },
+          { pitch: 74, start: 1, duration: 1, velocity: 90 },
+        ] },
+        // 高い音を別チャンネルに置いても、melodyChannel 指定時は旋律に混ぜない
+        { name: "Arp", program: 81, channel: 5, notes: [
+          { pitch: 96, start: 0, duration: 0.25, velocity: 60 },
+          { pitch: 98, start: 0.5, duration: 0.25, velocity: 60 },
+        ] },
+      ],
+    });
+    const midi = parseMidi(scoreToMidi(score));
+    const all = extractFeatures("all", midi);
+    const ch0 = extractFeatures("ch0", midi, { melodyChannel: 0 });
+    expect(all.melodyRange).toBeGreaterThan(ch0.melodyRange);
+    expect(ch0.melodyRange).toBe(2);
+  });
 });
+
