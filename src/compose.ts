@@ -39,6 +39,7 @@ import { repairPlan } from "./theory/repair";
 import { analyzeChord } from "./theory/roman";
 import { parseKeyName } from "./theory/key";
 import { transposePlanToMode, planModeConflict } from "./theory/mode";
+import { evaluateCraft, type CraftReport } from "./theory/craft";
 import { parseKey, SCALES } from "./theory/index";
 import { checkCommonProgression } from "./theory/progression-shape";
 import { mulberry32, pickSoftmaxSeeded, resolveSeed } from "./util/random";
@@ -284,6 +285,8 @@ export type ComposeResult = {
   issues: Issue[];
   suggestions: ReharmSuggestion[];
   complexity: ComplexitySummary;
+  /** Web知識カード由来の作曲クラフト評価 (0-100) */
+  craft: CraftReport;
 };
 
 export type ComposeOptions = {
@@ -448,6 +451,18 @@ export async function compose(
       } else {
         lastValidPlan = p;
       }
+      // Web知識カード由来の決定的クラフトチェック。
+      // 1項目だけの逸脱は許容し、2項目以上なら1回だけ作り直させる (ルール層への応用)
+      const craftPreview = evaluateCraft(
+        p,
+        resolveSections(p, bars, (p.timeSignature[0] * 4) / p.timeSignature[1]),
+        bars,
+      );
+      if (craftPreview.failed.length >= 2 && planAttempts < maxAttempts) {
+        throw new Error(
+          `CRAFT: ${craftPreview.checks.filter((c) => !c.ok).map((c) => `${c.id} (${c.detail})`).join("; ")}`,
+        );
+      }
       plan = p;
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
@@ -536,6 +551,8 @@ export async function compose(
   const suggestions = reharmonizePlan(finalPlan);
 
   const sections = resolveSections(finalPlan, bars, beatsPerBar);
+  // Web知識カード由来のクラフト評価 (最終プランに対して)
+  const craft = evaluateCraft(finalPlan, sections, bars);
 
   // ---- (2) メロディ候補を並列生成して採点 (長い曲は16小節ずつ) ----
   const chunkOf = (b0: number, b1: number): MelodyContext => {
@@ -803,6 +820,7 @@ export async function compose(
     complexity: evaluateComplexity([
       { name: finalPlan.title, bars, plan: finalPlan, score },
     ]),
+    craft,
     stats: {
       ms: Date.now() - t0,
       planMs,

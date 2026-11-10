@@ -41,6 +41,8 @@ type Row = {
   attempts: number;
   issueErrors: number;
   issueWarns: number;
+  /** Web知識由来のクラフト評価 (0-100) */
+  craft: number;
   ms: number;
   tokens: number;
 };
@@ -70,6 +72,7 @@ function measure(result: ComposeResult, prompt: string, seed: number, web: boole
     attempts: result.attempts,
     issueErrors: result.issues.filter((i) => i.severity === "error").length,
     issueWarns: result.issues.filter((i) => i.severity === "warn").length,
+    craft: result.craft.score,
     ms: result.stats.ms,
     tokens: result.stats.outputTokens,
   };
@@ -115,6 +118,7 @@ async function main() {
       songs: rs.length,
       corpusFitMean: Math.round(mean(fits) * 10) / 10,
       corpusFitMedian: Math.round(median(fits) * 10) / 10,
+      craftMean: Math.round(mean(rs.map((r) => r.craft)) * 10) / 10,
       modeMatchRate: Math.round((rs.filter((r) => r.modeMatch).length / rs.length) * 100) / 100,
       issuesErrors: rs.reduce((a, r) => a + r.issueErrors, 0),
       issuesWarns: rs.reduce((a, r) => a + r.issueWarns, 0),
@@ -153,6 +157,7 @@ async function main() {
     `| コーパス適合度 (mean) | ${off.corpusFitMean} | ${on.corpusFitMean} | ${delta("corpusFitMean")} |`,
     `| コーパス適合度 (median) | ${off.corpusFitMedian} | ${on.corpusFitMedian} | ${delta("corpusFitMedian")} |`,
     `| ペア内差 (mean) | — | — | ${Math.round(mean(pairDeltas) * 10) / 10} |`,
+    `| クラフト評価 (mean) | ${off.craftMean} | ${on.craftMean} | ${delta("craftMean")} |`,
     `| モード一致率 | ${off.modeMatchRate} | ${on.modeMatchRate} | ${delta("modeMatchRate")} |`,
     `| 和声 error 合計 | ${off.issuesErrors} | ${on.issuesErrors} | ${delta("issuesErrors")} |`,
     `| 和声 warn 合計 | ${off.issuesWarns} | ${on.issuesWarns} | ${delta("issuesWarns")} |`,

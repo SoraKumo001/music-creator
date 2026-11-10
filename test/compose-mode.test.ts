@@ -66,6 +66,21 @@ function seedFor(mode: "major" | "minor"): number {
   throw new Error(`no seed found for ${mode}`);
 }
 
+/** クラフト違反が2項目以上あるプラン (遅いトニック + セクションの表情が同一) */
+function craftViolatingPlanJson(): string {
+  return JSON.stringify({
+    title: "Mock",
+    bpm: 150,
+    timeSignature: [4, 4],
+    key: "D major",
+    chords: [[0, "Bm"], [4, "G"], [8, "A"], [12, "D"], [16, "Bm"], [20, "G"], [24, "A"], [28, "D"]],
+    sections: [
+      { name: "A", bars: 4, role: "verse", energy: 2, comp: "pad", bass: "root", drums: "basic" },
+      { name: "B", bars: 4, role: "verse", energy: 2, comp: "pad", bass: "root", drums: "basic" },
+    ],
+  });
+}
+
 beforeEach(() => {
   state.responses.length = 0;
 });
@@ -125,5 +140,15 @@ describe("compose mode enforcement", () => {
     // 全却下で失敗させず、和声として成立する 1 回目の案を採用する
     expect(r.plan.key).toBe("D major");
     expect(parseKeyName(r.plan.key).mode).toBe("major");
+  });
+
+  it("regenerates when two or more craft rules are broken", async () => {
+    const seed = seedFor("major");
+    state.responses.push(craftViolatingPlanJson(), goodPlanJson("major"), melodyJson(), melodyJson(), melodyJson());
+    const r = await compose(cfg, PROMPT, 8, { seed, creativity: 0.5, complexity: "standard" });
+    expect(r.attempts).toBe(2);
+    // 採用されたプランはクラフト違反が1項目以下
+    expect(r.craft.failed.length).toBeLessThanOrEqual(1);
+    expect(r.craft.score).toBeGreaterThanOrEqual(80);
   });
 });

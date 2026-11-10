@@ -51,11 +51,11 @@ app.post("/api/compose", async (c) => {
       parsed.data.bars,
       { loop: parsed.data.loop, ensemble: parsed.data.ensemble, seed: parsed.data.seed ?? undefined, creativity: parsed.data.creativity, complexity: parsed.data.complexity },
     );
-    const { score, midi, sections, attempts, stats, harmony, issues, suggestions, complexity } = result;
+    const { score, midi, sections, attempts, stats, harmony, issues, suggestions, complexity, craft } = result;
     const explain = c.req.query("explain") === "1";
     return c.json({
       score, midi: toBase64(midi), sections, attempts, stats, complexity,
-      ...(explain ? { harmony, issues, suggestions } : {}),
+      ...(explain ? { harmony, issues, suggestions, craft } : {}),
     });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "compose failed" }, 502);

@@ -51,12 +51,52 @@
       "note": "終止形"
     },
     {
-      "id": "ja-chord-progression",
-      "url": "https://ja.wikipedia.org/wiki/コード進行",
-      "title": "コード進行",
+      "id": "bassline",
+      "url": "https://en.wikipedia.org/wiki/Bassline",
+      "title": "Bassline",
       "license": "CC BY-SA 4.0 (Wikipedia)",
-      "lang": "ja",
-      "note": "日本語のコード進行解説"
+      "lang": "en",
+      "note": "ベースラインの役割と動き"
+    },
+    {
+      "id": "drum-beat",
+      "url": "https://en.wikipedia.org/wiki/Drum_beat",
+      "title": "Drum beat",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "ドラムパターンの基本"
+    },
+    {
+      "id": "voicing",
+      "url": "https://en.wikipedia.org/wiki/Voicing_(music)",
+      "title": "Voicing (music)",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "ボイシング・声部配置"
+    },
+    {
+      "id": "modulation",
+      "url": "https://en.wikipedia.org/wiki/Modulation_(music)",
+      "title": "Modulation (music)",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "転調の手法"
+    },
+    {
+      "id": "orchestration",
+      "url": "https://en.wikipedia.org/wiki/Orchestration",
+      "title": "Orchestration",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "編曲・オーケストレーション"
+    },
+    {
+      "id": "rhythm",
+      "url": "https://en.wikipedia.org/wiki/Rhythm",
+      "title": "Rhythm",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "リズムの基本"
     },
     {
       "id": "ja-pop-harmony",
@@ -64,7 +104,7 @@
       "title": "ポピュラー和声",
       "license": "CC BY-SA 4.0 (Wikipedia)",
       "lang": "ja",
-      "note": "ポピュラー音楽の和声"
+      "note": "ポピュラー音楽の和声（コード進行のリダイレクト先）"
     }
   ]
 }
