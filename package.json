@@ -8,6 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval": "tsx scripts/eval-harmony.ts",
+    "eval:diversity": "tsx scripts/eval-diversity.ts",
+    "eval:complexity": "tsx scripts/eval-complexity.ts",
     "compose": "tsx scripts/compose.ts"
   },
   "dependencies": {

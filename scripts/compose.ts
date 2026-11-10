@@ -17,7 +17,10 @@ function loadEnv(): Record<string, string> {
 const env = loadEnv();
 const prompt = process.argv[2];
 const bars = Number(process.argv[3] ?? 8);
-if (!prompt) throw new Error('usage: npm run compose -- "<prompt>" [bars]');
+const seedArg = process.argv.find((a: string) => a.startsWith("--seed="));
+const creativityArg = process.argv.find((a: string) => a.startsWith("--creativity="));
+const complexityArg = process.argv.find((a: string) => a.startsWith("--complexity="));
+if (!prompt) throw new Error('usage: npm run compose -- "<prompt>" [bars] [--seed=N] [--creativity=0-1] [--complexity=simple|standard|rich]');
 if (!env.LLM_API_KEY) throw new Error("LLM_API_KEY is not set (.dev.vars)");
 
 const t0 = Date.now();
@@ -30,6 +33,11 @@ const { score, midi, sections, stats } = await compose(
   },
   prompt,
   bars,
+  {
+    seed: seedArg ? Number(seedArg.split("=")[1]) : undefined,
+    creativity: creativityArg ? Number(creativityArg.split("=")[1]) : 0.7,
+    complexity: (complexityArg ? complexityArg.split("=")[1] : "standard") as "simple" | "standard" | "rich",
+  },
 );
 mkdirSync("out", { recursive: true });
 const base = `out/${Date.now()}`;

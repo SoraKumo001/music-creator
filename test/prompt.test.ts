@@ -13,10 +13,14 @@ describe("plan prompt", () => {
     expect(text).toContain("Example in C major");
   });
 
-  it("falls back to universal cards when no genre matches", () => {
-    const text = system("静かな曲");
-    expect(text).toContain("pop-1564");
-    expect(text).toContain("jpop-oudou");
+  it("falls back to seeded cards when no genre matches", () => {
+    const a = system("静かな曲");
+    const b = planMessages("静かな曲", 8, false, "band", { seed: 1 })[0]!.content;
+    const c = planMessages("静かな曲", 8, false, "band", { seed: 2 })[0]!.content;
+    expect(a).toContain("Progression vocabulary");
+    // フォールバックは5枚サンプルされ、seedで変わる
+    expect(b).toContain("Progression vocabulary");
+    expect(b).not.toBe(c);
   });
 
   it("includes the harmony rules", () => {

@@ -1,8 +1,23 @@
+import { keyAtBeat } from "../plan";
 import type { Note } from "../score";
 import { chordAt, type ChordEvent } from "./accompaniment";
 import { parseKey, SCALES, snapToScale } from "./index";
 
-export type MelodyContext = { key: string; chords: ChordEvent[]; bars: number; beatsPerBar: number };
+export type MelodyContext = {
+  key: string;
+  chords: ChordEvent[];
+  bars: number;
+  beatsPerBar: number;
+  /** 曲中の転調。barは0始まり。その小節から新調で採点・補正する */
+  keyChanges?: { bar: number; key: string }[];
+};
+
+/** 指定拍で有効な調のスケール集合と主音 */
+function localScale(ctx: MelodyContext, start: number): { set: Set<number>; root: number; key: string } {
+  const key = keyAtBeat({ key: ctx.key, keyChanges: ctx.keyChanges ?? [] }, start, ctx.beatsPerBar);
+  const { root, scale } = parseKey(key);
+  return { set: new Set(SCALES[scale]!.map((i) => (i + root) % 12)), root, key };
+}
 
 export type MelodyScore = { total: number; parts: Record<string, number> };
 
@@ -17,8 +32,7 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
   const ns = [...notes].filter((n) => n.start < total).sort((a, b) => a.start - b.start);
   if (ns.length < 2) return { total: 0, parts: {} };
 
-  const { root, scale } = parseKey(ctx.key);
-  const scaleSet = new Set(SCALES[scale]!.map((i) => (i + root) % 12));
+  const inLocalScale = (n: Note) => localScale(ctx, n.start).set.has(n.pitch % 12);
   const isChordTone = (n: Note) => chordAt(ctx.chords, n.start).tones.includes(n.pitch % 12);
 
   // 強拍(小節頭と中間拍)または長い音がコードトーンか
@@ -28,7 +42,7 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
   });
   const chordTone = strong.length ? strong.filter(isChordTone).length / strong.length : 0.5;
 
-  const inScale = ns.filter((n) => scaleSet.has(n.pitch % 12) || isChordTone(n)).length / ns.length;
+  const inScale = ns.filter((n) => inLocalScale(n) || isChordTone(n)).length / ns.length;
 
   const pitches = ns.map((n) => n.pitch);
   const span = Math.max(...pitches) - Math.min(...pitches);
@@ -60,7 +74,8 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
 
   const last = ns[ns.length - 1]!;
   const lastChord = chordAt(ctx.chords, last.start);
-  const ending = (lastChord.tones.includes(last.pitch % 12) ? 0.6 : 0) + (last.pitch % 12 === root ? 0.25 : 0) + (last.duration >= 1 ? 0.15 : 0);
+  const lastRoot = localScale(ctx, last.start).root;
+  const ending = (lastChord.tones.includes(last.pitch % 12) ? 0.6 : 0) + (last.pitch % 12 === lastRoot ? 0.25 : 0) + (last.duration >= 1 ? 0.15 : 0);
 
   const parts = { chordTone, inScale, range, rhythm, density, contour, motif, coverage, ending };
   const weights: Record<keyof typeof parts, number> = {
@@ -74,8 +89,6 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
 /** 採用したメロディの仕上げ: 単旋律化、調外音の補正、音域補正 */
 export function polishMelody(notes: Note[], ctx: MelodyContext): Note[] {
   const total = ctx.bars * ctx.beatsPerBar;
-  const { root, scale } = parseKey(ctx.key);
-  const scaleSet = new Set(SCALES[scale]!.map((i) => (i + root) % 12));
 
   // 同時発音は最高音だけ残す
   const byStart = new Map<number, Note>();
@@ -92,10 +105,11 @@ export function polishMelody(notes: Note[], ctx: MelodyContext): Note[] {
     let pitch = n.pitch;
     while (pitch < 55) pitch += 12;
     while (pitch > 96) pitch -= 12;
-    // 調にもコードにも属さない「長めの音」だけ補正(短い経過音は残す)
+    // 調にもコードにも属さない「長めの音」だけ補正(短い経過音は残す)。転調区間はその区間の調で判定
+    const local = localScale(ctx, n.start);
     const chord = chordAt(ctx.chords, n.start);
-    if (n.duration >= 0.5 && !scaleSet.has(pitch % 12) && !chord.tones.includes(pitch % 12)) {
-      pitch = snapToScale(pitch, ctx.key);
+    if (n.duration >= 0.5 && !local.set.has(pitch % 12) && !chord.tones.includes(pitch % 12)) {
+      pitch = snapToScale(pitch, local.key);
     }
     const next = ns[i + 1];
     const maxDur = next ? next.start - n.start : total - n.start;

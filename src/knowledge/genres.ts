@@ -38,6 +38,18 @@ export const GENRES: GenreCard[] = [
     card: "Tempo 100-180 BPM, swing 8ths. Chords: ii7-V7-Imaj7 turnarounds. Walking bass (32) in quarter notes outlining chord tones, ride cymbal pattern, piano (0) comping with 7th chords. Melody uses chord tones on strong beats and passing tones in between.",
     progressions: ["jazz-251", "jazz-turnaround", "jazz-rhythm", "jazz-251-minor"],
   },
+  {
+    id: "ballad",
+    keywords: ["ballad", "バラード", "しっとり", "感動", "泣ける", "明るい", "楽しい", "元気", "ポップ", "pop", "pops", "アニソン", "アイドル"],
+    card: "Tempo 70-110 BPM. Chords: I-V-vi-IV or vi-IV-I-V, IV-V-vi for pre-chorus lift. Drums: soft basic pattern, crash on section heads. Instruments: piano (0) or strings (48), bass (33) on roots.",
+    progressions: ["pop-1564", "pop-1465", "jpop-6415", "jpop-prechorus"],
+  },
+  {
+    id: "funk",
+    keywords: ["funk", "ファンク", "soul", "ソウル", "bossa", "ボサノバ", "samba", "サンバ", "citypop", "シティポップ"],
+    card: "Tempo 85-115 BPM, syncopated 16ths. Chords: maj7/7th voicings with III7-VI7 turnarounds. Drums: swung hats or four-on-floor lite. Instruments: electric piano (4), mellow bass with passing tones, light drums.",
+    progressions: ["jpop-marusa", "citypop-maj7", "jazz-turnaround", "lofi-maj7"],
+  },
 ];
 
 export function pickGenreCards(prompt: string): GenreCard[] {

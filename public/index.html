@@ -56,6 +56,15 @@
           <option value="4">4小節</option>
           <option value="8" selected>8小節</option>
           <option value="16">16小節</option>
+          <option value="32">32小節</option>
+        </select>
+      </div>
+      <div>
+        <label for="complexity">構成</label>
+        <select id="complexity" title="rich: 長尺・転調・対旋律などを許す">
+          <option value="simple">シンプル</option>
+          <option value="standard" selected>スタンダード</option>
+          <option value="rich">リッチ (複雑)</option>
         </select>
       </div>
       <div>
@@ -68,6 +77,18 @@
       <div style="flex:0 0 auto">
         <label for="loop">ループ用</label>
         <input id="loop" type="checkbox" title="最後を終止させず、次の周へ自然につなげます">
+      </div>
+      <div>
+        <label for="creativity">個性 (0=定番 / 1=冒険)</label>
+        <select id="creativity">
+          <option value="0.3">定番寄り</option>
+          <option value="0.5" selected>バランス</option>
+          <option value="0.8">冒険寄り</option>
+        </select>
+      </div>
+      <div>
+        <label for="seed">seed (空=おまかせ)</label>
+        <input id="seed" type="number" min="0" max="4294967295" placeholder="例: 42" style="width:100%;font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:8px;padding:10px;">
       </div>
       <button id="go" type="submit">作曲する</button>
     </div>
@@ -86,6 +107,10 @@
     <div class="row" style="margin-top:0">
       <button id="play" type="button">▶ 試聴</button>
       <button id="dl" class="secondary" type="button">MIDIをダウンロード</button>
+      <div style="flex:0 0 auto;display:flex;align-items:center;gap:6px">
+        <input id="auditionLoop" type="checkbox" title="試聴を繰り返し再生します">
+        <label for="auditionLoop" style="margin:0">ループ再生</label>
+      </div>
     </div>
     <div class="row" style="margin-top:8px">
       <div>
@@ -101,6 +126,12 @@
 const $ =(id) => document.getElementById(id);
 const COLORS = ["#3b5bdb", "#e8590c", "#2f9e44", "#ae3ec9", "#c2255c", "#0c8599", "#a67c00", "#495057"];
 let current = null;
+// 試聴のループ再生フラグ。新曲の作曲時は作曲フォームの「ループ用」に合わせ、
+// ユーザーの切替は localStorage に保存して次回以降も使う
+let auditionLoop = false;
+try {
+  auditionLoop = localStorage.getItem("mc-audition-loop") === "1";
+} catch {}
 
 const examples = ["ローファイな夜のBGM", "疾走感のあるロック", "静かなクラシックのピアノ曲", "ジャズの小品", "明るいEDM"];
 for (const ex of examples) {
@@ -123,9 +154,10 @@ $("form").addEventListener("submit", async (e) => {
   $("go").disabled = true; $("status").className = ""; $("result").style.display = "none";
   startProgress();
   try {
+    const seedVal = $("seed").value.trim();
     const res = await fetch("/api/compose", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: $("prompt").value.trim(), bars: Number($("bars").value), loop: $("loop").checked, ensemble: $("ensemble").value }),
+      body: JSON.stringify({ prompt: $("prompt").value.trim(), bars: Number($("bars").value), loop: $("loop").checked, ensemble: $("ensemble").value, creativity: Number($("creativity").value), complexity: $("complexity").value, ...(seedVal === "" ? {} : { seed: Number(seedVal) }) }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "入力が正しくありません");
@@ -150,6 +182,10 @@ function show({ score, attempts = 1 }) {
     s.append(t.name);
     $("legend").appendChild(s);
   });
+  // ループ用作曲なら試聴もループ再生を初期ONにする (ユーザーが後から切替可)
+  auditionLoop = $("loop").checked;
+  try { localStorage.setItem("mc-audition-loop", auditionLoop ? "1" : "0"); } catch {}
+  $("auditionLoop").checked = auditionLoop;
   drawRoll(score);
 }
 
@@ -243,28 +279,74 @@ function buildDrums(dest) {
   };
 }
 
-/** 再生ヘッドのアニメーション (SpessaSynth / Tone.js 共通) */
-function animateHead(getTime, getDuration) {
+/** 再生ヘッドの描画 (SpessaSynth / Tone.js 共通)。位置と寿命の判断はポーリング時計に一本化 */
+function animateHead() {
   const h = $("head"), dpr = devicePixelRatio || 1;
   h.width = h.clientWidth * dpr; h.height = h.clientHeight * dpr;
   const g = h.getContext("2d");
   const frame = () => {
     if (!playing) return;
-    const d = getDuration(), t = getTime();
+    const d = playTotal, t = headPos();
     const x = d > 0 ? Math.min(1, t / d) * h.width : 0;
     g.clearRect(0, 0, h.width, h.height);
     g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--fg");
     g.fillRect(x, 0, 2 * dpr, h.height);
-    if (d > 0 && t >= d - 0.05) { stop(); return; }
     raf = requestAnimationFrame(frame);
   };
   frame();
 }
 
+// ---- ポーリング駆動の再生時計 ----
+// エンジン内部の時刻取得に頼らず、自前の時計でゲージ位置と周の終わりを判定する。
+// これにより API の個体差 (ラップ有無・非同期遅延) に左右されず、ループとゲージが一致する。
+let playTotal = 0; // 1周の長さ (秒)。Score から算出
+let playEpoch = 0; // 今周の開始時刻 (performance.now(), ms)
+let pollTimer = 0; // 周端検知ポーリングのタイマ
+let pollEngine = null; // 'spessa' | 'tone': 再生中のエンジン
+
+/** 再生ヘッドの現在位置 (秒)。ループONなら周回、OFFなら末端で止まる */
+const headPos = () => {
+  const raw = Math.max(0, (performance.now() - playEpoch) / 1000);
+  if (playTotal > 0) return auditionLoop ? raw % playTotal : Math.min(raw, playTotal);
+  return raw;
+};
+
+/** 周の終わりをポーリングで検知し、ループ継続または停止する */
+function startPolling(total, engine) {
+  stopPolling();
+  playTotal = total;
+  pollEngine = engine;
+  playEpoch = performance.now();
+  pollTimer = setInterval(() => {
+    if (!playing) return;
+    if (playTotal <= 0) return;
+    const raw = (performance.now() - playEpoch) / 1000;
+    if (raw < playTotal) return;
+    if (!auditionLoop) { stop(); return; }
+    if (pollEngine === "spessa") {
+      // 読込済みデータの先頭に戻すだけなので再取得なし = 速い
+      if (window.SpessaPlayer.replay()) {
+        playEpoch = performance.now();
+      } else {
+        stop();
+      }
+    } else {
+      // Tone は Transport.loop で音が周回済み。時計だけ巻き戻す
+      playEpoch = performance.now();
+    }
+  }, 120);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = 0; }
+  pollEngine = null;
+}
+
 function stop() {
-  playing = false; cancelAnimationFrame(raf);
+  playing = false; cancelAnimationFrame(raf); stopPolling();
   if (window.SpessaPlayer) { try { window.SpessaPlayer.stop(); } catch {} }
-  if (typeof Tone !== "undefined") { Tone.Transport.stop(); Tone.Transport.cancel(); }
+  if (typeof Tone !== "undefined") {
+    Tone.Transport.stop(); Tone.Transport.cancel(); Tone.Transport.loop = false;
+  }
   disposables.forEach((n) => n.dispose()); disposables = [];
   busNodes.forEach((n) => n.dispose()); busNodes = [];
   const h = $("head"); h.getContext("2d").clearRect(0, 0, h.width, h.height);
@@ -273,6 +355,8 @@ function stop() {
 
 async function play() {
   const status = $("status");
+  const { score } = current, spb = 60 / score.bpm;
+  const total = Math.max(...score.tracks.flatMap((t) => t.notes.map((n) => n.start + n.duration))) * spb;
   // 高音質: SpessaSynth + General MIDI サウンドフォント (CDN から遅延ロード)
   if (window.SpessaPlayer) {
     try {
@@ -280,7 +364,8 @@ async function play() {
       await window.SpessaPlayer.play(current.midi, volumePct);
       status.textContent = "";
       playing = true; $("play").textContent = "■ 停止";
-      animateHead(() => window.SpessaPlayer.progress(), () => window.SpessaPlayer.duration());
+      startPolling(total, "spessa");
+      animateHead();
       return;
     } catch (e) {
       console.warn("SpessaSynth の再生に失敗したため Tone.js にフォールバックします", e);
@@ -291,8 +376,6 @@ async function play() {
   if (typeof Tone === "undefined") { status.className = "err"; status.textContent = "試聴用ライブラリを読み込めませんでした"; return; }
   await Tone.start();
   const bus = createBus();
-  const { score } = current, spb = 60 / score.bpm;
-  const total = Math.max(...score.tracks.flatMap((t) => t.notes.map((n) => n.start + n.duration))) * spb;
   // 同音色 (ディヴィジ) のパートは 1 つのシンセにまとめて発音数を抑える
   const byProgram = new Map();
   for (const t of score.tracks) {
@@ -314,13 +397,40 @@ async function play() {
     if (!drumVoice) { drumVoice = buildDrums(bus); disposables.push(...drumVoice.nodes); }
     for (const n of t.notes) Tone.Transport.schedule((time) => drumVoice.play(n, time), n.start * spb);
   }
-  Tone.Transport.schedule(() => stop(), total + 1);
+  // ループ再生ONなら Transport を周回させて途切れなく繰り返す (時計の巻戻しはポーリング側)
+  if (auditionLoop) {
+    Tone.Transport.loop = true;
+    Tone.Transport.loopStart = 0;
+    Tone.Transport.loopEnd = total;
+  }
   Tone.Transport.start("+0.1");
   playing = true; $("play").textContent = "■ 停止";
-  animateHead(() => Tone.Transport.seconds, () => total);
+  startPolling(total, "tone");
+  playEpoch += 100; // start("+0.1") の遅延分だけ時計をずらす
+  animateHead();
 }
 
 $("play").onclick = () => (playing ? stop() : play());
+
+// 試聴ループ再生の切替。再生中でも即時反映する
+$("auditionLoop").checked = auditionLoop;
+$("auditionLoop").addEventListener("change", (e) => {
+  const pos = headPos(); // 切替前のヘッド位置を保持し、ゲージが飛ばないようにする
+  auditionLoop = e.target.checked;
+  try { localStorage.setItem("mc-audition-loop", auditionLoop ? "1" : "0"); } catch {}
+  playEpoch = performance.now() - pos * 1000;
+  if (playing && typeof Tone !== "undefined" && pollEngine === "tone" && playTotal > 0) {
+    if (auditionLoop) {
+      Tone.Transport.loop = true;
+      Tone.Transport.loopStart = 0;
+      Tone.Transport.loopEnd = playTotal;
+    } else {
+      // 周回をやめ、今周の終わりでポーリングが止める
+      Tone.Transport.loop = false;
+    }
+  }
+  // Spessa 側はポーリングが周端を検知して継続/停止するため、ここでの操作は不要
+});
 
 $("volume").value = String(volumePct);
 $("volout").textContent = `${volumePct}%`;
@@ -401,6 +511,22 @@ window.SpessaPlayer = {
     seq.loadNewSongList([{ binary: bytes.buffer }]);
     seq.play();
   },
+  /**
+   * 読込済みの曲を先頭に戻して再生し直す (ループ継続用。成功時は true)。
+   * シークは pause 中に反映されるため、一度 pause してから戻す。
+   * 再読込しない分、play() より速く周回できる。
+   */
+  replay() {
+    if (!engine) return false;
+    try {
+      engine.seq.pause();
+      engine.seq.currentTime = 0;
+      engine.seq.play();
+      return true;
+    } catch {
+      return false;
+    }
+  },
   stop() {
     if (!engine) return;
     try { engine.seq.pause(); engine.seq.currentTime = 0; } catch {}
@@ -408,8 +534,6 @@ window.SpessaPlayer = {
   setVolume(pct) {
     if (engine) engine.master.gain.value = spessaGain(pct);
   },
-  progress() { return engine ? engine.seq.currentHighResolutionTime : 0; },
-  duration() { return engine ? engine.seq.duration : 0; },
 };
 </script>
 </body>

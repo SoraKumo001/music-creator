@@ -1,15 +1,16 @@
 import { pickGenreCards } from "./knowledge/genres";
-import { progressionById, type ProgressionCard } from "./knowledge/progressions";
+import { PROGRESSIONS, progressionById, type ProgressionCard } from "./knowledge/progressions";
 import type { ChatMessage } from "./llm/provider";
-import type { Ensemble, Plan, Section } from "./plan";
+import { SECTION_ROLES, type Complexity, type Ensemble, type Plan, type Section } from "./plan";
 import { BASS_STYLES, COMP_STYLES } from "./theory/accompaniment";
 import { DRUM_PATTERN_NAMES } from "./theory/drums";
 import { realizeNumerals } from "./theory/roman";
+import { hashSeed, mulberry32, sampleSeeded } from "./util/random";
 
 const list = (a: readonly string[]) => a.map((n) => `"${n}"`).join(", ");
 
-/** ジャンルに合う進行カード。該当なしなら汎用の 4 枚 */
-function progressionCards(userPrompt: string): ProgressionCard[] {
+/** ジャンルに合う進行カード。該当なしならseedで汎用カードからサンプル (毎回同じ4枚にしない) */
+function progressionCards(userPrompt: string, seed?: number): ProgressionCard[] {
   const ids = new Set<string>();
   for (const genre of pickGenreCards(userPrompt)) for (const id of genre.progressions ?? []) ids.add(id);
   const chosen = [...ids].flatMap((id) => {
@@ -17,10 +18,9 @@ function progressionCards(userPrompt: string): ProgressionCard[] {
     return card ? [card] : [];
   });
   if (chosen.length > 0) return chosen.slice(0, 5);
-  return ["pop-1564", "jpop-oudou", "jazz-251", "rock-minor"].flatMap((id) => {
-    const card = progressionById(id);
-    return card ? [card] : [];
-  });
+  // フォールバック: 全カードから決定的サンプル。seed未指定でもpromptハッシュで揺らす
+  const rand = mulberry32(seed ?? hashSeed(userPrompt));
+  return sampleSeeded(PROGRESSIONS, 5, rand);
 }
 
 function progressionLine(card: ProgressionCard): string {
@@ -30,8 +30,8 @@ function progressionLine(card: ProgressionCard): string {
   return `- ${card.name} [${card.id}] ${card.numerals.join("–")} (${card.bars} bars, ${rhythm}). Example in ${exampleKey}: ${example}. Feel: ${card.feel}. Use: ${card.usage}`;
 }
 
-function progressionBlock(userPrompt: string): string {
-  const cards = progressionCards(userPrompt);
+function progressionBlock(userPrompt: string, seed?: number): string {
+  const cards = progressionCards(userPrompt, seed);
   return `\n\nProgression vocabulary — choose ONE as the skeleton for the A section, and a different one (or a variation) for the B section:
 ${cards.map(progressionLine).join("\n")}
 
@@ -52,9 +52,11 @@ Schema:
   "bpm": number,
   "timeSignature": [numerator, denominator],
   "key": string (e.g. "C minor"),
+  "keyChanges": [{ "bar": 0-based bar number, "key": string }] (optional, for modulation),
+  "swing": number 0-0.6 (optional, 0.2-0.35 for jazz/blues/shuffle feel),
   "ending": one of "button", "stop", "ring", "hits" (optional),
   "chords": [[startBeat, "Symbol"], ...],
-  "sections": [{ "name": string, "bars": integer, "comp": one of ${list(COMP_STYLES)}, "bass": one of ${list(BASS_STYLES)}, "drums": one of ${list(DRUM_PATTERN_NAMES)}, "none", "energy": 1 | 2 | 3 }],
+  "sections": [{ "name": string, "bars": integer, "role": one of ${list(SECTION_ROLES)}, "comp": one of ${list(COMP_STYLES)}, "bass": one of ${list(BASS_STYLES)}, "drums": one of ${list(DRUM_PATTERN_NAMES)}, "none", "energy": 1 | 2 | 3, "swell": -1 | 0 | 1 }],
   "compProgram": GM instrument 0-127 for the chords,
   "bassProgram": GM instrument 0-127 for the bass,
   "melodyProgram": GM instrument 0-127 for the melody,
@@ -63,12 +65,28 @@ Schema:
 
 Details:
 - "chords": cover the whole song from beat 0, one entry per chord change (usually 1 or 2 per bar). A quarter note = 1 beat; bar n starts at (n-1) * beatsPerBar. Symbols: C, Cm, C7, Cmaj7, Cm7, Cm7b5, Cdim, Csus4, C6, C9, Cadd9, optional slash bass (C/E). Flats/sharps as Bb, F#.
-- "sections": in order; their "bars" must add up to the requested length. Give the song a shape: e.g. a sparse intro (energy 1, drums "none", comp "pad" or "arpeggio"), a main A section (energy 2), a fuller B/chorus (energy 3, busier comp and bass), and optionally a calmer ending. For short songs (4-8 bars) use 2-3 sections.
+- "timeSignature": usually [4,4]. You may use [3,4] for a waltz or [6,8] for a compound feel when the request suits it.
+- "sections": in order; their "bars" must add up to the requested length. Give the song a shape with "role": e.g. intro (energy 1, drums "none"), verse (energy 2), prechorus (energy 2-3, "swell" 1), chorus (energy 3), bridge (contrast key or feel), break (only melody + sparse hits), outro. For short songs (4-8 bars) use 2-3 sections; for 16+ bars use 4-6 with a chorus and a contrasting bridge or break. "swell" 1 builds up into the next section.
 - Vary "comp", "bass" and "drums" between sections so the arrangement develops; do not use identical settings for every section.
 - "ending": choose the ending that fits the request. "button" = two short hits (pop); "stop" = one short hit then silence (rock/punk); "ring" = let the final chord ring out (ballad/lofi); "hits" = four stabs (dance/rock). Do not always use "button"; match the genre and mood. Omit it only if unsure (the app then derives one from tempo and key).
-- Use 4-6 different chords. Use a different progression for the B/chorus section than for A.`;
+- Use 4-6 different chords. Use a different progression for the B/chorus section than for A.
+- Variety (important — every generation must sound different): avoid the default C major / 120 BPM / I–V–vi–IV unless the request asks for it. Pick a key, tempo and borrowed/secondary-dominant color that fits the mood. Use at least one of: inversion (C/E), tension (maj7/9/add9), or borrowing (iv, bVI, bVII) where it fits the style.`;
 
-export function planMessages(userPrompt: string, bars: number, loop = false, ensemble: Ensemble = "band"): ChatMessage[] {
+export type PlanPromptOptions = { seed?: number; creativity?: number; complexity?: Complexity };
+
+function complexityBlock(bars: number, complexity: Complexity = "standard"): string {
+  if (complexity === "simple") {
+    return `\n\nSimplicity: keep the song simple — at most 2 sections, diatonic chords only, no keyChanges, swing 0.`;
+  }
+  if (complexity === "rich" || bars >= 16) {
+    return `\n\nAmbition (longer song): use 4-6 sections with distinct roles including a chorus and a bridge or break.
+- keyChanges: for 16+ bars you MAY modulate once (e.g. up a whole step for the final chorus, or to a closely related key for the bridge). List at most 2 entries; the first bar is 0. End the song in the final key.
+- Contrast the bridge: different feel, sparser texture, or a new borrowed color; build back with prechorus "swell" 1.`;
+  }
+  return "";
+}
+
+export function planMessages(userPrompt: string, bars: number, loop = false, ensemble: Ensemble = "band", opts: PlanPromptOptions = {}): ChatMessage[] {
   const cards = pickGenreCards(userPrompt);
   const knowledge = cards.length
     ? "\n\nGenre guidance:\n" + cards.map((c) => `- [${c.id}] ${c.card}`).join("\n")
@@ -89,7 +107,7 @@ This song will be LOOPED. The last bar is a turnaround, not an ending:
 The arrangement will be ORCHESTRAL (strings, woodwinds, brass, timpani, harp). Focus on chords, sections and the melody; "comp", "bass" and "drums" styles are ignored. Use energy 1 for intimate passages and energy 3 for the full tutti.`
     : "";
   return [
-    { role: "system", content: PLAN_SYSTEM + knowledge + progressionBlock(userPrompt) + endingRule + ensembleRule },
+    { role: "system", content: PLAN_SYSTEM + knowledge + progressionBlock(userPrompt, opts.seed) + complexityBlock(bars, opts.complexity) + endingRule + ensembleRule },
     { role: "user", content: `Request: ${userPrompt}\nLength: ${bars} bars.` },
   ];
 }
@@ -104,33 +122,65 @@ Rules:
 - Mix note lengths (e.g. eighths, quarters, dotted and held notes) and leave rests so phrases can breathe. Move mostly by step with occasional leaps.
 - Follow the section energy: sparse or silent in energy 1 sections, most active and highest in energy 3 sections.`;
 
-export function melodyMessages(userPrompt: string, plan: Plan, sections: Section[], bars: number, beatsPerBar: number): ChatMessage[] {
+export type MelodyPromptOptions = {
+  /** この範囲の小節だけ書く (0始まり、toBarは含まない)。長い曲の分割生成用 */
+  fromBar?: number;
+  toBar?: number;
+  /** 直前フレーズの末尾 (継続性のため)。{pitch, start} の最大4音 */
+  prevTail?: { pitch: number; start: number }[];
+  /** 対旋律用: 主旋律のこの範囲の音 (pitch,start)。指定時は対旋律の指示に切替 */
+  counterTo?: { pitch: number; start: number; duration: number }[];
+};
+
+export function melodyMessages(
+  userPrompt: string, plan: Plan, sections: Section[], bars: number, beatsPerBar: number,
+  opts: MelodyPromptOptions = {},
+): ChatMessage[] {
+  const fromBar = opts.fromBar ?? 0;
+  const toBar = opts.toBar ?? bars;
+  const offset = fromBar * beatsPerBar;
   const chordLines: string[] = [];
   const sorted = [...plan.chords].sort((a, b) => a[0] - b[0]);
-  for (let b = 0; b < bars; b++) {
+  for (let b = fromBar; b < toBar; b++) {
     const s = b * beatsPerBar;
     const e = s + beatsPerBar;
     const inBar = sorted.filter(([t]) => t >= s && t < e);
     const carry = [...sorted].reverse().find(([t]) => t <= s);
     const parts = inBar.length && inBar[0]![0] === s ? inBar : [...(carry ? [[s, carry[1]] as [number, string]] : []), ...inBar];
-    chordLines.push(`bar ${b + 1} (beats ${s}-${e}): ` + parts.map(([t, sym]) => `${sym}@${t}`).join(" "));
+    chordLines.push(`bar ${b + 1} (beats ${s - offset}-${e - offset}): ` + parts.map(([t, sym]) => `${sym}@${t - offset}`).join(" "));
   }
   const sectionLines = sections.map(
-    (s) => `- ${s.name}: bars ${s.startBar + 1}-${s.startBar + s.bars}, energy ${s.gain < 1 ? 1 : s.gain > 1 ? 3 : 2}`,
+    (s) => `- ${s.name} (${s.role}): bars ${s.startBar + 1}-${s.startBar + s.bars}, energy ${s.gain < 1 ? 1 : s.gain > 1 ? 3 : 2}${s.swell !== 0 ? `, swell ${s.swell > 0 ? "up" : "down"}` : ""}`,
   );
   const user = [
     `Song request: ${userPrompt}`,
     `Title: ${plan.title}`,
     `Key: ${plan.key}, tempo ${plan.bpm} BPM, time signature ${plan.timeSignature.join("/")}, ${bars} bars (${bars * beatsPerBar} beats).`,
+    ...(fromBar > 0 || toBar < bars
+      ? [`Range: write ONLY bars ${fromBar + 1}-${toBar} (beats 0-${(toBar - fromBar) * beatsPerBar} relative to bar ${fromBar + 1}). Do not write notes outside this range.`]
+      : []),
+    ...(opts.prevTail && opts.prevTail.length > 0
+      ? [`Previous phrase ends with: ${opts.prevTail.map((n) => `${n.pitch}@${n.start - offset}`).join(" ")}. Start this phrase as a natural continuation.`]
+      : []),
+    ...(opts.counterTo
+      ? [`Main melody in this range (pitch@start): ${opts.counterTo.map((n) => `${n.pitch}@${n.start - offset}`).join(" ")}.`]
+      : []),
     `Sections:\n${sectionLines.join("\n")}`,
     `Chords:\n${chordLines.join("\n")}`,
-    "Write the melody.",
+    opts.counterTo ? "Write the counter-melody." : "Write the melody.",
   ].join("\n\n");
-  const endingRule = plan.loop
-    ? `- The song will loop: end the melody with a pickup or a tone that leads into the first chord, and leave the last beat as a rest. Do not end on a long tonic.
+  const isFinalRange = toBar >= bars && !opts.counterTo;
+  const endingRule = opts.counterTo
+    ? `- Write a sparse counter-line under the main melody: long chord tones, mostly a third/sixth below it, filling the gaps where the main melody rests. Never cover the main melody's rhythm exactly.
+- Stay within the given range.`
+    : plan.loop
+      ? `- The song will loop: end the melody with a pickup or a tone that leads into the first chord, and leave the last beat as a rest. Do not end on a long tonic.
 - Stay within the given number of bars.`
-    : `- In the final bar, land on the tonic and stop: use a note of about 1-2 beats, then leave the rest of the bar as a rest. Do not hold one note through the whole final bar.
-- Stay within the given number of bars.`;
+      : isFinalRange
+        ? `- In the final bar, land on the tonic and stop: use a note of about 1-2 beats, then leave the rest of the bar as a rest. Do not hold one note through the whole final bar.
+- Stay within the given range.`
+        : `- This is a middle phrase: end openly (no final tonic resolution) so the next phrase can continue. Leave a short breath before the range end.
+- Stay within the given range.`;
   const ensembleRule = plan.ensemble === "orchestra"
     ? "\n- This is an orchestral piece: the melody will be played by the first violin. Write a singable, sustained line in the mid-high register and leave space for the accompaniment."
     : "";

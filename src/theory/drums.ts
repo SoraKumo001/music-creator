@@ -1,6 +1,7 @@
 import { GM_DRUMS } from "./index";
 import type { EndingStyle, Section } from "../plan";
 import type { Note } from "../score";
+import { mulberry32 } from "../util/random";
 
 /** 1小節(16分グリッド)のパターン。値は [ステップ(0-15), ドラム名, ベロシティ] */
 type Hit = [number, keyof typeof GM_DRUMS, number];
@@ -28,6 +29,18 @@ const BAR_PATTERNS: Record<string, Hit[]> = {
     [0, "kick", 100], [8, "kick", 95], [4, "snare", 100], [12, "snare", 100],
     ...[0, 4, 8, 12].map((s): Hit => [s, "closedHat", 70]),
   ],
+  waltz: [
+    [0, "kick", 100], [4, "snare", 65], [8, "snare", 65],
+    ...[0, 2, 4, 6, 8, 10].map((s, i): Hit => [s, "closedHat", i % 2 ? 55 : 70]),
+  ],
+  halftime: [
+    [0, "kick", 105], [8, "snare", 108],
+    ...[0, 2, 4, 6, 8, 10, 12, 14].map((s, i): Hit => [s, "closedHat", i % 2 ? 60 : 80]),
+  ],
+  shuffle: [
+    [0, "kick", 100], [8, "kick", 90], [4, "snare", 100], [12, "snare", 100],
+    ...[0, 3, 4, 7, 8, 11, 12, 15].map((s, i): Hit => [s, "closedHat", i % 2 ? 60 : 78]),
+  ],
 };
 
 export const DRUM_PATTERN_NAMES = Object.keys(BAR_PATTERNS);
@@ -39,8 +52,10 @@ const vel = (v: number, gain: number) => Math.max(1, Math.min(127, Math.round(v 
  *  - セクション頭にクラッシュ、セクション最終小節にフィル(次のセクションがある場合)
  *  - 曲の最終小節は1拍目のキック+クラッシュだけで締める
  */
-export function generateDrums(sections: Section[], beatsPerBar = 4, ending: EndingStyle = "button", loop = false): Note[] {
+export function generateDrums(sections: Section[], beatsPerBar = 4, ending: EndingStyle = "button", loop = false, opts: { seed?: number } = {}): Note[] {
   const notes: Note[] = [];
+  const rand = opts.seed !== undefined ? mulberry32((opts.seed ^ 0xc2b2ae35) >>> 0) : null;
+  const human = () => (rand ? Math.floor(rand() * 5) - 2 : 0);
   const totalBars = sections.reduce((n, s) => n + s.bars, 0);
   sections.forEach((sec, si) => {
     if (sec.drums === "none") return;
@@ -88,11 +103,15 @@ export function generateDrums(sections: Section[], beatsPerBar = 4, ending: Endi
       // ループ用は最終小節の最後でフィルを打ち、次の周へ渡す
       const isLoopFill = loop && bar === totalBars - 1;
       const isFill = (b === sec.bars - 1 && sec.bars >= 2 && si < sections.length - 1) || isPreEnding || isLoopFill;
-      for (const [step, drum, v] of pat) {
-        const start = base + step / 4;
-        if (start >= base + beatsPerBar) continue;
-        if (isFill && start >= base + beatsPerBar - 1 && (drum === "kick" || drum === "snare")) continue;
-        notes.push({ pitch: GM_DRUMS[drum], start, duration: 0.25, velocity: vel(v, g) });
+      // 休止セクションはフィルと区切りだけ残す
+      const sparse = sec.role === "break";
+      if (!sparse) {
+        for (const [step, drum, v] of pat) {
+          const start = base + step / 4;
+          if (start >= base + beatsPerBar) continue;
+          if (isFill && start >= base + beatsPerBar - 1 && (drum === "kick" || drum === "snare")) continue;
+          notes.push({ pitch: GM_DRUMS[drum], start, duration: 0.25, velocity: vel(v, g) });
+        }
       }
       if (isFill) {
         for (let i = 0; i < 4; i++) {
@@ -103,5 +122,6 @@ export function generateDrums(sections: Section[], beatsPerBar = 4, ending: Endi
       if (b === 0) notes.push({ pitch: GM_DRUMS.crash, start: base, duration: 1, velocity: vel(85, g) });
     }
   });
+  if (rand) for (const n of notes) n.velocity = Math.max(1, Math.min(127, n.velocity + human()));
   return notes;
 }

@@ -111,6 +111,24 @@ describe("repairPlan", () => {
     expect(has(after, "NO_CADENCE")).toBe(false);
   });
 
+  it("supports varied closings with a seed", () => {
+    const plan = mk([[0, "C"], [8, "Am"], [16, "Dm"], [24, "G"]]);
+    const variants = new Set(
+      [1, 2, 3, 4, 5, 6, 7, 8].map((seed) =>
+        repairPlan(plan, 8, { seed, closing: "varied" }).plan.chords.map(([, s]) => s).join("|"),
+      ),
+    );
+    // seedで終止形が分散する (V-I固定にならない)
+    expect(variants.size).toBeGreaterThan(1);
+  });
+
+  it("keeps strict behavior by default", () => {
+    const plan = mk([[0, "C"], [8, "Am"], [16, "Dm"], [24, "G"]]);
+    const { plan: repaired } = repairPlan(plan, 8);
+    expect(repaired.chords.at(-1)![1]).toBe("C");
+    expect(repaired.chords.at(-2)![1]).toBe("G7");
+  });
+
   it("moves a late first chord to beat 0", () => {
     const plan = mk([[4, "C"], [8, "G7"], [12, "C"]]);
     const { plan: repaired } = repairPlan(plan, 4);

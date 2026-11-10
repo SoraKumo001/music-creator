@@ -3,10 +3,10 @@
  * error は生成のやり直し、warn は repair.ts で補正、info は記録のみ。
  */
 
-import { resolveSections, type Plan } from "../plan";
+import { keyAtBeat, resolveSections, type Plan } from "../plan";
 import { cadenceAt } from "./cadence";
 import { isRetrogression } from "./functions";
-import { parseKeyName, type KeyContext } from "./key";
+import { parseKeyName } from "./key";
 import { analyzeChord, type Analysis } from "./roman";
 
 export type IssueSeverity = "error" | "warn" | "info";
@@ -24,7 +24,9 @@ export type IssueCode =
   | "SECTION_CADENCE"
   | "CHROMATIC_UNEXPLAINED"
   | "LOOP_LEAD_IN"
-  | "LOOP_TARGET";
+  | "LOOP_TARGET"
+  | "MODULATION"
+  | "FORM";
 
 export type Issue = {
   code: IssueCode;
@@ -36,11 +38,13 @@ export type Issue = {
 
 type Parsed = { beat: number; symbol: string; analysis: Analysis };
 
-function parseChords(chords: [number, string][], key: KeyContext): { parsed: Parsed[]; parseErrors: Issue[] } {
+/** 各コードをその拍で有効な調で解析する (転調対応) */
+function parseChords(plan: Plan, beatsPerBar: number): { parsed: Parsed[]; parseErrors: Issue[] } {
   const parseErrors: Issue[] = [];
   const parsed: Parsed[] = [];
-  for (const [beat, symbol] of [...chords].sort((a, b) => a[0] - b[0])) {
+  for (const [beat, symbol] of [...plan.chords].sort((a, b) => a[0] - b[0])) {
     try {
+      const key = parseKeyName(keyAtBeat(plan, beat, beatsPerBar));
       parsed.push({ beat, symbol, analysis: analyzeChord(symbol, key) });
     } catch {
       parseErrors.push({
@@ -59,10 +63,9 @@ function parseChords(chords: [number, string][], key: KeyContext): { parsed: Par
 export function validatePlan(plan: Plan, bars: number): Issue[] {
   const beatsPerBar = (plan.timeSignature[0] * 4) / plan.timeSignature[1];
   const total = bars * beatsPerBar;
-  const key = parseKeyName(plan.key);
   const issues: Issue[] = [];
 
-  const { parsed, parseErrors } = parseChords(plan.chords, key);
+  const { parsed, parseErrors } = parseChords(plan, beatsPerBar);
   issues.push(...parseErrors);
   if (parsed.length === 0) return issues;
 
@@ -232,6 +235,29 @@ export function validatePlan(plan: Plan, bars: number): Issue[] {
         message: `${p.symbol} is outside the key and not a recognized borrowing.`,
       });
     }
+  }
+
+  // 転調の記録
+  for (const kc of plan.keyChanges ?? []) {
+    if (kc.bar >= 0 && kc.bar < bars) {
+      issues.push({
+        code: "MODULATION",
+        severity: "info",
+        beat: kc.bar * beatsPerBar,
+        message: `Modulation to ${kc.key} at bar ${kc.bar + 1}.`,
+      });
+    }
+  }
+
+  // フォームの記録: 役割付きセクションがあるのにサビがない長い曲
+  const roles = plan.sections.map((s) => s.role ?? "other");
+  if (roles.some((r) => r !== "other") && bars >= 8 && !roles.includes("chorus") && !plan.loop) {
+    issues.push({
+      code: "FORM",
+      severity: "info",
+      message: "Long song without a chorus section.",
+      fix: "Add a chorus (energy 3) to give the song a focal point.",
+    });
   }
 
   return issues.sort((a, b) => (a.beat ?? 0) - (b.beat ?? 0));
