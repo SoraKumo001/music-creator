@@ -282,7 +282,27 @@ export function buildInsights(p: CorpusProfile): string[] {
   const topMeter = Object.entries(p.meters).sort((a, b) => b[1] - a[1])[0];
   if (topMeter && topMeter[1] > 0.5) out.push(`Meter: ${topMeter[0]} dominates (${pct(topMeter[1])}); other meters are special cases.`);
 
-  out.push(`Mode: major ${pct(p.modeShare.major)} / minor ${pct(p.modeShare.minor)} — minor is common, so don't default to major.`);
+  // 長調/短調は「どちらが多数か」だけを述べ、特定モードへ誘導しない。
+  // (以前は「minor is common, so don't default to major」と短調寄りに指示していたため、
+  //  ゲーム/戦闘系リクエストがほぼ毎回短調になる一因になっていた)
+  const majorShare = p.modeShare.major;
+  const minorShare = p.modeShare.minor;
+  if (Math.abs(majorShare - minorShare) < 0.15) {
+    out.push(
+      `Mode: major ${pct(majorShare)} / minor ${pct(minorShare)} — the corpus uses both about equally; ` +
+      `match the mode to the request (bright/heroic material tends major) and do not default to minor.`,
+    );
+  } else if (majorShare > minorShare) {
+    out.push(
+      `Mode: major ${pct(majorShare)} / minor ${pct(minorShare)} — major is more common; ` +
+      `prefer major unless the request asks for a dark, sad or tense mood.`,
+    );
+  } else {
+    out.push(
+      `Mode: major ${pct(majorShare)} / minor ${pct(minorShare)} — minor is a little more common here; ` +
+      `both modes are normal, so choose by the requested mood instead of defaulting.`,
+    );
+  }
 
   const topInst = Object.entries(p.instruments).slice(0, 4).map(([k, v]) => `${k} ${pct(v)}`);
   if (topInst.length > 0) out.push(`Instrument focus (by note count): ${topInst.join(", ")}.`);

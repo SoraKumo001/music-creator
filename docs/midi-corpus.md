@@ -109,7 +109,8 @@ Observed tendencies in a reference corpus of game-music MIDI arrangements
 (statistics only; do not copy any specific piece). Use them as a style prior, not a rule:
 - Tempo: the tempo metadata is uniform at 125 BPM across this corpus (authoring convention),
   so do not use tempo as a style prior — vary tempo to fit the request.
-- Mode: major 53% / minor 48% — minor is common, so don't default to major.
+- Mode: major 53% / minor 48% — the corpus uses both about equally; match the mode to the
+  request (bright/heroic material tends major) and do not default to minor.
 - Instrument focus (by note count): synthLead 26%, guitar 21%, bass 16%, brass 8%.
 - Drum emphasis: bassDrum 22%, snare 25%, closedHat 25%.
 - Rhythm: downbeat onsets 27%, off-beat 8ths 25%, 16ths 48%.
@@ -124,6 +125,32 @@ Observed tendencies in a reference corpus of game-music MIDI arrangements
 - 数値は「目安」として提示し、強い制約にしない（LLM の表現を殺さない）
 - コーパスのテンポが全曲同一など **情報量がない項目は「使うな」と明示**する
 - 旋律・進行そのものは渡さない（ローマ数字の頻度まで）
+- **モード（長調/短調）は統計の提示だけで LLM に任せない**（下節）
+
+### モード（長調/短調）の決定
+
+以前は `"key": string (e.g. "C minor")` の例示と「minor is common」という知見だけを渡し、
+長調/短調の選択を LLM に任せていました。このためゲーム/戦闘/疾走系のリクエストでは
+**16回中16回が短調**になり、参照コーパス（長調 53% / 短調 48%）と乖離していました。
+
+現在は `src/prompt.ts` の `pickMode()` が生成ごとにモードを決定的に決め、
+Variation ブロックで `Key: use exactly F major` のように主音とモードを明示します。
+
+| 入力 | 決め方 |
+|---|---|
+| 「明るい」「勇ましい」「楽しい」等 | 長調に固定 |
+| 「暗い」「悲しい」「ホラー」等 | 短調に固定 |
+| 指定なし (例: 「ゲームのボス戦BGM」) | コーパスの `modeShare` (長調 52.5%) を seed 付き乱数で引く |
+
+LLM が明示に反したモードを返した場合は作り直させ、それでも直らなければ
+`src/theory/mode.ts` の `transposePlanToMode()` がローマ数字を保ったまま同主調へ
+実現し直します（通常経路では発動しません）。
+
+さらに、キーだけ長調で和音が並行短調に寄っている（例: `C major` に `Cm–Ab–Eb–Bb`）と
+響きが短調になるため、`planModeConflict()` が「並行モードのトニック和音を含む借用が 40% 以上」を
+検出して作り直させます（最終試行では許容するベストエフォート）。
+プロンプトに載せる進行カードも、決めたモードのカードを優先し、ジャンル内に足りなければ
+全体から同じモードのカードで補います（長調の曲に短調の定番カードを渡さない）。
 
 ## 5. 適合度指標（`src/eval/corpusFit.ts`）
 

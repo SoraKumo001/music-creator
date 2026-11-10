@@ -17,7 +17,7 @@ import {
   type Plan,
   type Section,
 } from "./plan";
-import { melodyMessages, planMessages } from "./prompt";
+import { melodyMessages, pickMode, planMessages } from "./prompt";
 import { NoteSchema, ScoreSchema, type Note, type Score } from "./score";
 import {
   chordAt,
@@ -38,6 +38,7 @@ import {
 import { repairPlan } from "./theory/repair";
 import { analyzeChord } from "./theory/roman";
 import { parseKeyName } from "./theory/key";
+import { transposePlanToMode, planModeConflict } from "./theory/mode";
 import { parseKey, SCALES } from "./theory/index";
 import { checkCommonProgression } from "./theory/progression-shape";
 import { mulberry32, pickSoftmaxSeeded, resolveSeed } from "./util/random";
@@ -360,6 +361,10 @@ export async function compose(
   const complexity: Complexity = opts.complexity ?? "standard";
   const seed = resolveSeed(prompt, opts.seed);
   const rng = mulberry32(seed);
+  // コーパス知見をプロンプトへ入れるか (モードの事前分布にも使う)
+  const useCorpusPrompt = opts.corpus !== false && opts.corpusPrompt !== false;
+  // この生成で使うモード (長調/短調)。プロンプトにも明示し、LLM が無視したら作り直させる
+  const targetMode = pickMode(prompt, seed, { corpusPrior: useCorpusPrompt });
   cfg = { ...cfg, sessionId: cfg.sessionId ?? "mc-" + crypto.randomUUID() };
   const t0 = Date.now();
   let outputTokens = 0;
@@ -368,7 +373,6 @@ export async function compose(
   };
 
   // ---- (1) 設計 ----
-  const useCorpusPrompt = opts.corpus !== false && opts.corpusPrompt !== false;
   const messages: ChatMessage[] = planMessages(prompt, bars, loop, ensemble, {
     seed,
     creativity,
@@ -376,6 +380,16 @@ export async function compose(
     corpus: useCorpusPrompt,
   });
   let plan: Plan | undefined;
+  /**
+   * 和声検証まで通った最後のプラン。モード不一致だった場合のフォールバック
+   * (同じ主音の指定モードへ実現し直す) にだけ使う。
+   */
+  let lastValidPlan: Plan | undefined;
+  /**
+   * 和声検証だけは通った最後のプラン。モード/定番進行の理由で全試行が却下された場合の
+   * 最後の受け皿 (LLM の出力が偶発的に壊れたくらいで作曲全体を失敗させないため)。
+   */
+  let lastAcceptablePlan: Plan | undefined;
   let planAttempts = 0;
   let lastError = "";
   // creativityが高いほど温度を上げて定型進行から外す
@@ -398,6 +412,7 @@ export async function compose(
         throw new Error(
           errors.map((i) => `${i.code}: ${i.message}`).join(" / "),
         );
+      lastAcceptablePlan = p;
       // 使い古された定番進行をそのまま採用しない (1回だけ差し戻す)
       if (planAttempts === 1) {
         const verdict = checkCommonProgression(p, bars, prompt);
@@ -406,12 +421,29 @@ export async function compose(
             { role: "assistant", content: res.content },
             {
               role: "user",
-              content: `The A-section progression (${verdict.skeleton.join("–")}) is the most overused default. Choose a DIFFERENT skeleton from the vocabulary above — e.g. one that changes the root motion or starts on a non-tonic degree — and return the corrected full JSON only.`,
+              content: `The A-section progression (${verdict.skeleton.join("–")}) is the most overused default. Choose a DIFFERENT skeleton from the vocabulary above — change the root motion while keeping the tonic (I or i) as the audible home chord — and return the corrected full JSON only.`,
             },
           );
           lastError = "common progression";
           continue;
         }
+      }
+      // モードはプロンプトの Variation ブロックで明示している。無視されたら作り直させる
+      const planMode = parseKeyName(p.key).mode;
+      if (planMode !== targetMode) {
+        lastValidPlan = p; // キーだけ違うプランはフォールバックで同主調へ移せる
+        throw new Error(
+          `MODE_MISMATCH: the plan key "${p.key}" is ${planMode}, but this generation must be in a ${targetMode} key. Keep the "Key: ..." value from the Variation block and rewrite the plan so all chords fit it.`,
+        );
+      }
+      // キーは合っていても和音が並行短調/長調に寄っていれば響きが逆になる。
+      // 最終試行では生成を失敗させず、そのまま採用する (repair/color 層が終止を整える)
+      const modeConflict = planModeConflict(p, targetMode);
+      if (modeConflict) {
+        if (planAttempts < maxAttempts) throw new Error(`MODE_CONTENT: ${modeConflict}`);
+        lastError = modeConflict;
+      } else {
+        lastValidPlan = p;
       }
       plan = p;
     } catch (e) {
@@ -424,6 +456,14 @@ export async function compose(
         },
       );
     }
+  }
+  if (!plan && lastValidPlan) {
+    // 既定回数内でモード指示に従わなかった場合の決定的フォールバック
+    // (和声検証は通っているプランを、同じ主音の指定モードへ実現し直す)
+    plan = transposePlanToMode(lastValidPlan, targetMode);
+  } else if (!plan && lastAcceptablePlan) {
+    // モード/定番進行の理由で全試行が却下された場合でも、和声として成立する案があれば採用する
+    plan = lastAcceptablePlan;
   }
   if (!plan)
     throw new Error(

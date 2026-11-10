@@ -67,7 +67,9 @@ describe("aggregateFeatures", () => {
     expect(profile.rhythm.sixteenthShare).toBeCloseTo(0.45);
     expect(profile.form.medianSectionBars).toBe(8);
     expect(profile.insights.length).toBeGreaterThan(3);
-    expect(profile.insights.join(" ")).toContain("minor is common");
+    // モードの知見は「短調が普通だから長調を既定にしない」と特定モードへ誘導しない
+    expect(profile.insights.join(" ")).toContain("about equally");
+    expect(profile.insights.join(" ")).toContain("do not default to minor");
   });
 
   it("flags a uniform tempo instead of pretending it is a style prior", () => {

@@ -5,7 +5,7 @@ import type { CorpusProfile } from "../analyze/corpus";
 
 export const CORPUS_PROFILE: CorpusProfile | null = {
   "version": 1,
-  "generatedAt": "2026-11-10T07:33:47.369Z",
+  "generatedAt": "2026-11-10T12:25:30.934Z",
   "source": {
     "label": "zob-midi-sample40",
     "files": 40,
@@ -204,7 +204,7 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
   "insights": [
     "Tempo: the tempo metadata is uniform at 125 BPM across this corpus (authoring convention), so do not use tempo as a style prior — vary tempo to fit the request.",
     "Meter: 4/4 dominates (100%); other meters are special cases.",
-    "Mode: major 53% / minor 48% — minor is common, so don't default to major.",
+    "Mode: major 53% / minor 48% — the corpus uses both about equally; match the mode to the request (bright/heroic material tends major) and do not default to minor.",
     "Instrument focus (by note count): synthLead 26%, guitar 21%, bass 16%, brass 8%.",
     "Drum emphasis: acousticBassDrum 4%, bassDrum 22%, snare 25%, electricSnare 4%.",
     "Rhythm: downbeat onsets 27%, off-beat 8ths 25%, 16ths 48%, other subdivisions 37%.",
