@@ -111,10 +111,14 @@ function spacingPenalty(v: number[]): number {
   return penalty;
 }
 
-/** 半音・全音で重なる密集した声部は響きが濁るので避ける */
+/** 半音・全音で重なる密集した声部は響きが濁るので避ける (特に短2度は激しく濁るため重いペナルティ) */
 function clusterPenalty(v: number[]): number {
   let penalty = 0;
-  for (let i = 1; i < v.length; i++) if (v[i]! - v[i - 1]! <= 2) penalty += 6;
+  for (let i = 1; i < v.length; i++) {
+    const diff = v[i]! - v[i - 1]!;
+    if (diff === 1) penalty += 80;
+    else if (diff === 2) penalty += 4;
+  }
   return penalty;
 }
 

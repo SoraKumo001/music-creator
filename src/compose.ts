@@ -172,7 +172,7 @@ export function assemble(
             name: "Harmony",
             program: 48,
             channel: 6,
-            notes: generateHarmony(melody, plan, beatsPerBar),
+            notes: generateHarmony(melody, plan, beatsPerBar, { chords: events }),
           },
         ]
       : []),
@@ -214,7 +214,7 @@ export function assemble(
       name: "Chords",
       program: plan.compProgram,
       channel: 1,
-      notes: generateComp(events, a, { seed: opts.seed }),
+      notes: generateComp(events, a, { seed: opts.seed, melody }),
     },
     {
       name: "Bass",

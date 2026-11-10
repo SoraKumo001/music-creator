@@ -7,7 +7,7 @@
 import { gainAt, keyAtBeat, sectionAt, type Plan, type Section } from "../plan";
 import type { Note } from "../score";
 import { parseChord, type Chord } from "./harmony";
-import { toSegments, type Arrangement, type ChordEvent } from "./accompaniment";
+import { chordAt, toSegments, type Arrangement, type ChordEvent } from "./accompaniment";
 import { parseKey, SCALES } from "./index";
 import { parseKeyName } from "./key";
 import { voiceProgression } from "./voicing";
@@ -83,13 +83,29 @@ export function generatePad(events: ChordEvent[], a: Arrangement, opts: { melody
     if (v.length === 0) continue;
     const { active, minPitch } = melodyActivityAt(opts.melody, seg.start, seg.start + seg.len);
     const ceiling = active ? Math.max(67, minPitch - 2) : 84;
-    // 60..91 の範囲を保ちつつ、主旋律より上の音はオクターブ下げてマスキングを防ぐ
-    const pitches = [...new Set(v.map((p) => {
-      let q = p < 60 ? p + 12 : p;
-      if (q > ceiling && q - 12 >= 60) q -= 12;
-      return q;
-    }).filter((p) => p >= 60 && p <= 91))];
-    const len = Math.min(seg.len, a.beatsPerBar) - 0.06;
+    // ボイシング全体を主旋律シーリング以下・中音域 (60..91) に一括シフト (個別オクターブ移動による短2度クラッシュを防ぐ)
+    let shifted = [...v];
+    while (shifted.some((p) => p < 60) && shifted.every((p) => p + 12 <= ceiling)) {
+      shifted = shifted.map((p) => p + 12);
+    }
+    while (shifted.some((p) => p > ceiling) && shifted.every((p) => p - 12 >= 60)) {
+      shifted = shifted.map((p) => p - 12);
+    }
+    // 隣り合う声部が短2度 (半音差) になっている場合は、オクターブを離して不協和音を解消
+    shifted.sort((a, b) => a - b);
+    for (let i = 1; i < shifted.length; i++) {
+      const prev = shifted[i - 1];
+      const cur = shifted[i];
+      if (prev !== undefined && cur !== undefined && cur - prev === 1) {
+        if (cur + 12 <= 91) {
+          shifted[i] = cur + 12;
+        } else if (prev - 12 >= 60) {
+          shifted[i - 1] = prev - 12;
+        }
+      }
+    }
+    const pitches = [...new Set(shifted.filter((p) => p >= 60 && p <= 91))].sort((a, b) => a - b);
+    const len = Math.min(seg.len, a.beatsPerBar) - 0.08;
     if (len <= 0.1) continue;
     const g = gainAt(sec, seg.start);
     const baseVel = active ? 38 : 46;
@@ -222,25 +238,90 @@ function chordPitches(chord: Chord, base: number): number[] {
   return [...new Set(out)].sort((a, b) => a - b);
 }
 
-/** ハモリ: 主旋律にスケール内の3度下を付ける (長い音だけ) */
-export function generateHarmony(melody: Note[], plan: Plan, beatsPerBar: number, opts: { minDuration?: number } = {}): Note[] {
+/** ハモリ: 主旋律に協和する3度下〜6度下を付ける (長い音だけ、コード進行・スケールと不協和衝突しない音を選択) */
+export function generateHarmony(
+  melody: Note[],
+  plan: Plan,
+  beatsPerBar: number,
+  opts: { minDuration?: number; chords?: ChordEvent[] } = {},
+): Note[] {
   const minDuration = opts.minDuration ?? 0.5;
   const out: Note[] = [];
+  const chords: ChordEvent[] =
+    opts.chords ??
+    (plan.chords && plan.chords.length > 0
+      ? plan.chords.map(([start, symbol]) => ({ start, symbol }))
+      : []);
   let lastEnd = -1;
+
   for (const n of [...melody].sort((a, b) => a.start - b.start)) {
     if (n.duration < minDuration || n.start < lastEnd) continue;
     const key = parseKeyName(keyAtBeat(plan, n.start, beatsPerBar));
     const { root, scale } = parseKey(`${NOTE[key.root]} ${key.mode}`);
     const scaleSet = new Set(SCALES[scale]!.map((i) => (i + root) % 12));
-    // 3度下 (スケール内) を探す
-    let pitch = n.pitch - 3;
-    for (let d = 0; d < 6; d++) {
-      if (scaleSet.has((pitch - d + 12) % 12)) { pitch -= d; break; }
-      if (scaleSet.has((pitch + d) % 12)) { pitch += d; break; }
+
+    const curChord = chords.length > 0 ? chordAt(chords, n.start) : null;
+    const chordTonePcs = curChord ? new Set(curChord.tones.map((t) => (t % 12 + 12) % 12)) : null;
+
+    // 候補音: 主旋律より 3度下 (3〜4半音下), 4度下 (5半音下), 6度下 (8〜9半音下)
+    // 候補を順に評価し、コードトーンおよび主旋律と短2度/短9度 (半音差) で衝突しない最善のピッチを選択
+    const candidateDeltas = [3, 4, 5, 8, 9, 2];
+    let bestPitch: number | null = null;
+    let bestScore = -Infinity;
+
+    for (const delta of candidateDeltas) {
+      const p = n.pitch - delta;
+      if (p < 48 || p > 96) continue;
+      const pc = (p % 12 + 12) % 12;
+
+      // スケール内またはコードトーンであること
+      const inScale = scaleSet.has(pc);
+      const inChord = chordTonePcs ? chordTonePcs.has(pc) : false;
+      if (!inScale && !inChord) continue;
+
+      // 主旋律との衝突チェック:
+      // 同音(0)・短2度(1)・短9度(13 / pc差 1 or 11) は厳禁
+      const melDiffPc = Math.abs((n.pitch % 12) - pc);
+      if (melDiffPc === 0 && Math.abs(n.pitch - p) < 12) continue;
+      if (melDiffPc === 1 || melDiffPc === 11) continue;
+
+      // コードトーンとの衝突チェック:
+      // コードトーンのいずれかと短2度・短9度 (半音差) になる音は避ける
+      let clashesWithChord = false;
+      if (chordTonePcs) {
+        for (const ct of chordTonePcs) {
+          const diff = Math.abs(pc - ct);
+          if (diff === 1 || diff === 11) {
+            clashesWithChord = true;
+            break;
+          }
+        }
+      }
+      if (clashesWithChord) continue;
+
+      // スコアリング:
+      // 1. コードトーンなら高得点 (+50)
+      // 2. 3度下(3 or 4)または6度下(8 or 9)はハモリとして自然 (+35 / +30)
+      // 3. 4度下(5) (+15)
+      let score = 0;
+      if (inChord) score += 50;
+      if (delta === 3 || delta === 4) score += 35;
+      else if (delta === 8 || delta === 9) score += 30;
+      else if (delta === 5) score += 15;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPitch = p;
+      }
     }
-    if (pitch < 50 || pitch > 96) continue;
-    if (Math.abs(pitch - n.pitch) < 2) continue;
-    out.push({ ...n, pitch, velocity: Math.max(1, Math.round(n.velocity * 0.72)) });
+
+    if (bestPitch === null) continue;
+
+    out.push({
+      ...n,
+      pitch: bestPitch,
+      velocity: Math.max(1, Math.round(n.velocity * 0.72)),
+    });
     lastEnd = n.start + n.duration;
   }
   return out;

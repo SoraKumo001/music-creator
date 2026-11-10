@@ -38,6 +38,16 @@
   .row button { flex:0 0 auto; }
   .legend { display:flex; gap:12px; flex-wrap:wrap; font-size:.8125rem; color:var(--muted); margin:8px 0 12px; }
   .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:baseline; }
+  button.sm { padding:4px 10px; font-size:.8125rem; border-radius:6px; }
+  button.danger { border-color:#d6336c; color:#d6336c; }
+  button.danger:hover { background:#d6336c15; }
+  .song-list { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+  .song-item { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); gap:12px; flex-wrap:wrap; }
+  .song-info { flex:1 1 240px; }
+  .song-title { font-weight:600; font-size:.9375rem; margin-bottom:2px; }
+  .song-meta { font-size:.75rem; color:var(--muted); display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .song-meta .tag { padding:1px 6px; border-radius:4px; background:var(--card); border:1px solid var(--line); }
+  .song-actions { display:flex; gap:6px; flex:0 0 auto; }
 </style>
 </head>
 <body>
@@ -107,6 +117,7 @@
     <div class="row" style="margin-top:0">
       <button id="play" type="button">▶ 試聴</button>
       <button id="dl" class="secondary" type="button">MIDIをダウンロード</button>
+      <button id="save" class="secondary" type="button">★ OPFSに保存</button>
       <div style="flex:0 0 auto;display:flex;align-items:center;gap:6px">
         <input id="auditionLoop" type="checkbox" title="試聴を繰り返し再生します">
         <label for="auditionLoop" style="margin:0">ループ再生</label>
@@ -118,6 +129,18 @@
         <input id="volume" type="range" min="0" max="100" step="1" value="85">
       </div>
     </div>
+  </section>
+
+  <section id="library" class="card" style="margin-top:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <div>
+        <strong style="font-size:1.05rem">📁 保存した楽曲 (OPFS)</strong>
+        <span id="libCount" style="color:var(--muted);font-size:.8125rem;margin-left:6px">0 件</span>
+      </div>
+      <button id="clearAll" class="secondary danger sm" type="button" style="display:none">全曲削除</button>
+    </div>
+    <div id="libStatus" style="color:var(--muted);font-size:.875rem"></div>
+    <div id="songList" class="song-list"></div>
   </section>
 </main>
 
@@ -155,13 +178,31 @@ $("form").addEventListener("submit", async (e) => {
   startProgress();
   try {
     const seedVal = $("seed").value.trim();
+    const requestParams = {
+      prompt: $("prompt").value.trim(),
+      bars: Number($("bars").value),
+      loop: $("loop").checked,
+      ensemble: $("ensemble").value,
+      creativity: Number($("creativity").value),
+      complexity: $("complexity").value,
+      seed: seedVal === "" ? null : Number(seedVal),
+    };
     const res = await fetch("/api/compose", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: $("prompt").value.trim(), bars: Number($("bars").value), loop: $("loop").checked, ensemble: $("ensemble").value, creativity: Number($("creativity").value), complexity: $("complexity").value, ...(seedVal === "" ? {} : { seed: Number(seedVal) }) }),
+      body: JSON.stringify({ ...requestParams, ...(seedVal === "" ? {} : { seed: Number(seedVal) }) }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "入力が正しくありません");
-    current = data; show(data);
+    current = {
+      ...data,
+      id: `song_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      title: data.score.title,
+      createdAt: new Date().toISOString(),
+      request: requestParams,
+      saved: false,
+    };
+    show(current);
+    if (window.updateSaveButton) window.updateSaveButton();
     $("status").textContent = "";
   } catch (err) {
     $("status").className = "err"; $("status").textContent = "失敗しました: " + err.message;
@@ -536,6 +577,219 @@ window.SpessaPlayer = {
     if (engine) engine.master.gain.value = spessaGain(pct);
   },
 };
+
+// ---- OPFS 楽曲ライブラリ機能 ----
+import { isOpfsSupported, saveSong, listSongs, loadSong, deleteSong, clearAllSongs } from "./opfs-storage.js";
+
+const opfsSupported = isOpfsSupported();
+
+window.updateSaveButton = function() {
+  const btn = $("save");
+  if (!btn) return;
+  if (!opfsSupported) {
+    btn.style.display = "none";
+    return;
+  }
+  btn.style.display = "inline-block";
+  if (current && current.saved) {
+    btn.textContent = "保存済み ✓";
+    btn.disabled = true;
+  } else {
+    btn.textContent = "★ OPFSに保存";
+    btn.disabled = !current;
+  }
+};
+
+async function renderLibrary() {
+  const libStatus = $("libStatus");
+  const listEl = $("songList");
+  const countEl = $("libCount");
+  const clearBtn = $("clearAll");
+
+  if (!opfsSupported) {
+    libStatus.textContent = "お使いのブラウザは OPFS（端末内プライベート保存）に対応していません。";
+    clearBtn.style.display = "none";
+    return;
+  }
+
+  try {
+    const songs = await listSongs();
+    countEl.textContent = `${songs.length} 件`;
+
+    if (songs.length === 0) {
+      libStatus.textContent = "保存された楽曲はありません。「★ OPFSに保存」を押すとここに記録されます。";
+      listEl.innerHTML = "";
+      clearBtn.style.display = "none";
+      return;
+    }
+
+    libStatus.textContent = "";
+    clearBtn.style.display = "inline-block";
+    listEl.innerHTML = "";
+
+    for (const song of songs) {
+      const item = document.createElement("div");
+      item.className = "song-item";
+
+      const info = document.createElement("div");
+      info.className = "song-info";
+
+      const title = document.createElement("div");
+      title.className = "song-title";
+      title.textContent = song.title;
+
+      const meta = document.createElement("div");
+      meta.className = "song-meta";
+
+      const d = new Date(song.createdAt);
+      const dateStr = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+      meta.innerHTML = `
+        <span class="tag">${song.bpm} BPM</span>
+        <span class="tag">${song.key}</span>
+        <span class="tag">${song.bars}小節</span>
+        ${song.loop ? '<span class="tag">ループ</span>' : ""}
+        <span>${dateStr}</span>
+      `;
+      if (song.prompt) {
+        const pDesc = document.createElement("div");
+        pDesc.style.fontSize = ".75rem";
+        pDesc.style.color = "var(--muted)";
+        pDesc.style.marginTop = "2px";
+        pDesc.style.whiteSpace = "nowrap";
+        pDesc.style.overflow = "hidden";
+        pDesc.style.textOverflow = "ellipsis";
+        pDesc.textContent = `"${song.prompt}"`;
+        info.appendChild(title);
+        info.appendChild(meta);
+        info.appendChild(pDesc);
+      } else {
+        info.appendChild(title);
+        info.appendChild(meta);
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "song-actions";
+
+      // 読込ボタン
+      const loadBtn = document.createElement("button");
+      loadBtn.type = "button";
+      loadBtn.className = "secondary sm";
+      loadBtn.textContent = "読込";
+      loadBtn.onclick = async () => {
+        try {
+          if (typeof stop === "function") stop();
+          const full = await loadSong(song.id);
+          // フォーム側のパラメータを復元
+          if (full.request) {
+            if (full.request.prompt) $("prompt").value = full.request.prompt;
+            if (full.request.bars) $("bars").value = String(full.request.bars);
+            if (full.request.complexity) $("complexity").value = full.request.complexity;
+            if (full.request.ensemble) $("ensemble").value = full.request.ensemble;
+            if (typeof full.request.loop === "boolean") $("loop").checked = full.request.loop;
+            if (full.request.creativity) $("creativity").value = String(full.request.creativity);
+            if (full.request.seed != null) $("seed").value = String(full.request.seed);
+            else $("seed").value = "";
+          }
+          current = { ...full, saved: true };
+          show(current);
+          window.updateSaveButton();
+          $("result").scrollIntoView({ behavior: "smooth" });
+        } catch (err) {
+          alert("楽曲データの読み込みに失敗しました: " + err.message);
+        }
+      };
+
+      // MIDI DL ボタン
+      const dlBtn = document.createElement("button");
+      dlBtn.type = "button";
+      dlBtn.className = "secondary sm";
+      dlBtn.textContent = "MIDI";
+      dlBtn.title = "MIDIファイルをダウンロード";
+      dlBtn.onclick = async () => {
+        try {
+          const full = await loadSong(song.id);
+          const bin = atob(full.midi);
+          const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(new Blob([bytes], { type: "audio/midi" }));
+          a.download = (song.title || "song").replace(/[\\/:*?"<>|]/g, "_") + ".mid";
+          a.click();
+          URL.revokeObjectURL(a.href);
+        } catch (err) {
+          alert("ダウンロードに失敗しました: " + err.message);
+        }
+      };
+
+      // 削除ボタン
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "secondary danger sm";
+      delBtn.textContent = "削除";
+      delBtn.onclick = async () => {
+        if (!confirm(`「${song.title}」を削除しますか？`)) return;
+        try {
+          if (current && current.id === song.id && typeof stop === "function") stop();
+          await deleteSong(song.id);
+          if (current && current.id === song.id) {
+            current.saved = false;
+            window.updateSaveButton();
+          }
+          await renderLibrary();
+        } catch (err) {
+          alert("削除に失敗しました: " + err.message);
+        }
+      };
+
+      actions.appendChild(loadBtn);
+      actions.appendChild(dlBtn);
+      actions.appendChild(delBtn);
+
+      item.appendChild(info);
+      item.appendChild(actions);
+      listEl.appendChild(item);
+    }
+  } catch (err) {
+    libStatus.textContent = "ライブラリの読み込みに失敗しました: " + err.message;
+  }
+}
+
+// 保存ボタンのクリックイベント
+$("save").onclick = async () => {
+  if (!current) return;
+  try {
+    $("save").disabled = true;
+    $("save").textContent = "保存中…";
+    await saveSong(current);
+    current.saved = true;
+    window.updateSaveButton();
+    await renderLibrary();
+  } catch (err) {
+    alert("保存に失敗しました: " + err.message);
+    window.updateSaveButton();
+  }
+};
+
+// 全曲削除ボタンのクリックイベント
+$("clearAll").onclick = async () => {
+  if (!confirm("保存したすべての楽曲を削除しますか？この操作は取り消せません。")) return;
+  try {
+    if (typeof stop === "function") stop();
+    await clearAllSongs();
+    if (current) {
+      current.saved = false;
+      window.updateSaveButton();
+    }
+    await renderLibrary();
+  } catch (err) {
+    alert("全曲削除に失敗しました: " + err.message);
+  }
+};
+
+// 初期表示
+window.updateSaveButton();
+renderLibrary();
+
 </script>
 </body>
 </html>

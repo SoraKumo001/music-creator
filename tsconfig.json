@@ -8,6 +8,7 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "types": ["@cloudflare/workers-types", "node"],
+    "allowJs": true,
     "noEmit": true
   },
   "include": ["src", "scripts", "test"]

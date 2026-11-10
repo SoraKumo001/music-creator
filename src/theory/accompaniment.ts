@@ -57,7 +57,7 @@ const cutsOf = (a: Arrangement) => [...a.sections.map((s) => s.start), a.totalBe
 /** 最終小節は「終止」として扱う(ループ用の曲では終止しない) */
 const isEnding = (a: Arrangement, beat: number) => !a.loop && a.sections.length > 0 && beat >= a.totalBeats - a.beatsPerBar - 1e-6;
 
-export function generateComp(events: ChordEvent[], a: Arrangement, opts: { seed?: number } = {}): Note[] {
+export function generateComp(events: ChordEvent[], a: Arrangement, opts: { seed?: number; melody?: Note[] } = {}): Note[] {
   const out: Note[] = [];
   const sorted = [...events].sort((x, y) => x.start - y.start).filter((e) => e.start < a.totalBeats);
   const voicings = voiceProgression(sorted.map((e) => parseChord(e.symbol)));
@@ -275,5 +275,20 @@ export function generateBass(events: ChordEvent[], a: Arrangement, opts: { seed?
     }
   }
   if (rand) for (const note of out) note.velocity = Math.max(1, Math.min(127, note.velocity + human()));
-  return out;
+
+  // モノフォニック保証: ベースラインの同拍重複を解消し、次ノートの頭と重ならないようトリム
+  out.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const monophonic: Note[] = [];
+  for (let i = 0; i < out.length; i++) {
+    const cur = out[i]!;
+    const next = out[i + 1];
+    // 同一拍（または極小差）で複数の音がある場合、後続を優先（重複排除）
+    if (next && Math.abs(next.start - cur.start) < 0.02) continue;
+    const maxDur = next ? Math.max(0.05, next.start - cur.start - 0.03) : cur.duration;
+    monophonic.push({
+      ...cur,
+      duration: Math.min(cur.duration, maxDur),
+    });
+  }
+  return monophonic;
 }
