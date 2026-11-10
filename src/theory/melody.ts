@@ -313,15 +313,35 @@ export function developTheme(
         }
         const local = localScale(ctx, n.start);
         const ch = chordAt(ctx.chords, n.start);
-        if (avail >= 1.5 && nextBarNotes.length + (barNotes.length - i) < 7) {
-          // 付点8分 (0.75) + 16分 (0.25) + 8分 (0.5) の推進力あるフック分割
+        const isFastRock = plan.bpm >= 150;
+        if (isFastRock && avail >= 2.0 && nextBarNotes.length + (barNotes.length - i) < 8) {
+          // 疾走テンポ (150BPM+) で2拍以上の長音が出た場合: 8分音符のシンコペーション駆け上がりフレーズへ変換
+          const p1 = nearestChordOrScalePitch(n.pitch + 2, ch.tones, local.set, false);
+          const p2 = nearestChordOrScalePitch(n.pitch + 4, ch.tones, local.set, true);
+          const p3 = nearestChordOrScalePitch(n.pitch + (bar % 2 === 0 ? 5 : 2), ch.tones, local.set, false);
+          nextBarNotes.push(
+            { ...n, duration: 0.5 },
+            { pitch: p1, start: n.start + 0.5, duration: 0.5, velocity: Math.max(76, n.velocity - 6) },
+            { pitch: p2, start: n.start + 1.0, duration: 0.5, velocity: Math.min(122, n.velocity + 6) },
+            { pitch: p3, start: n.start + 1.5, duration: Math.max(0.25, avail - 1.55), velocity: Math.min(118, n.velocity + 2) },
+          );
+        } else if (avail >= 1.5 && nextBarNotes.length + (barNotes.length - i) < 7) {
+          // 疾走テンポでは 8分(0.5)+8分シンコペ(0.5)+8分(0.5)、通常は 付点8分(0.75)+16分(0.25)+8分(0.5)
           const stepUp = nearestChordOrScalePitch(n.pitch + 2, ch.tones, local.set, false);
           const target = nearestChordOrScalePitch(n.pitch + (bar % 2 === 0 ? 3 : -2), ch.tones, local.set, true);
-          nextBarNotes.push(
-            { ...n, duration: 0.75 },
-            { pitch: stepUp, start: n.start + 0.75, duration: 0.25, velocity: Math.max(70, n.velocity - 10) },
-            { pitch: target, start: n.start + 1.0, duration: Math.max(0.25, avail - 1.05), velocity: Math.min(120, n.velocity + 4) },
-          );
+          if (isFastRock) {
+            nextBarNotes.push(
+              { ...n, duration: 0.5 },
+              { pitch: target, start: n.start + 0.5, duration: 0.5, velocity: Math.min(122, n.velocity + 6) },
+              { pitch: stepUp, start: n.start + 1.0, duration: Math.max(0.25, avail - 1.05), velocity: Math.max(76, n.velocity - 4) },
+            );
+          } else {
+            nextBarNotes.push(
+              { ...n, duration: 0.75 },
+              { pitch: stepUp, start: n.start + 0.75, duration: 0.25, velocity: Math.max(70, n.velocity - 10) },
+              { pitch: target, start: n.start + 1.0, duration: Math.max(0.25, avail - 1.05), velocity: Math.min(120, n.velocity + 4) },
+            );
+          }
         } else if (avail >= 1.0 && nextBarNotes.length + (barNotes.length - i) < 6) {
           // 8分 (0.5) + 8分 (0.5) のスケール順次・コードトーン分割
           const pass = nearestChordOrScalePitch(n.pitch + (i % 2 === 0 ? 2 : -2), ch.tones, local.set, false);

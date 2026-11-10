@@ -6,7 +6,7 @@ import { mulberry32 } from "../util/random";
 
 export type ChordEvent = { start: number; symbol: string };
 
-export const COMP_STYLES = ["pad", "block", "arpeggio", "arpeggio16", "offbeat", "strum", "syncopation"] as const;
+export const COMP_STYLES = ["pad", "block", "chug", "arpeggio", "arpeggio16", "offbeat", "strum", "syncopation"] as const;
 export const BASS_STYLES = ["root", "rootFifth", "walking", "eighths", "sixteenths", "pedal", "none"] as const;
 
 /** 決定的な「人間らしさ」: 位置ごとにベロシティを±揺らす */
@@ -80,6 +80,31 @@ export function generateComp(events: ChordEvent[], a: Arrangement, opts: { seed?
         for (const p of v) hit(out, seg, 0, 1.5, p, 72 + jitter(n), g);
         for (const p of v) hit(out, seg, 2.5, 1, p, 60 + jitter(n + 1), gg(2.5));
         break;
+      case "chug": { // 疾走ロック用: 8分ブリッジミュート刻み + 2拍目裏シンコペーションアクセント + 小節末16分ギャロップ
+        const rootPc = seg.chord.root;
+        const fifthPc = (rootPc + 7) % 12;
+        let lowRoot = 48 + rootPc;
+        if (lowRoot < 48) lowRoot += 12;
+        const powerVoicing = [lowRoot, lowRoot + 7, lowRoot + 12];
+        const fullVoicing = v.map((p) => (p > 68 ? p - 12 : p));
+        void fifthPc;
+        for (let barBase = 0; barBase < seg.len - 1e-6; barBase += a.beatsPerBar) {
+          const barLen = Math.min(a.beatsPerBar, seg.len - barBase);
+          for (let s = 0, i = 0; s < barLen - 0.05; s += 0.5, i++) {
+            const rel = barBase + s;
+            const isAccent = Math.abs(s) < 0.01 || Math.abs(s - 1.5) < 0.01 || Math.abs(s - 3.0) < 0.01;
+            const chordsToHit = isAccent ? fullVoicing : powerVoicing;
+            const dur = isAccent ? 0.42 : 0.22;
+            const baseV = Math.abs(s) < 0.01 ? 86 : Math.abs(s - 1.5) < 0.01 ? 84 : Math.abs(s - 3.0) < 0.01 ? 80 : 62;
+            for (const p of chordsToHit) hit(out, seg, rel, dur, p, baseV + jitter(n + i), gg(rel));
+            // 2拍目裏と4拍目裏に16分のギャロップ刻みを挟んで疾走感を出す
+            if ((Math.abs(s - 1.5) < 0.01 || Math.abs(s - 3.5) < 0.01) && s + 0.25 < barLen - 0.05) {
+              for (const p of powerVoicing) hit(out, seg, rel + 0.25, 0.2, p, 70 + jitter(n + i + 3), gg(rel + 0.25));
+            }
+          }
+        }
+        break;
+      }
       case "arpeggio": {
         const seq = v.length > 2 ? [...v, ...v.slice(1, -1).reverse()] : v;
         for (let s = 0, i = 0; s < seg.len; s += 0.5, i++) {
@@ -209,7 +234,23 @@ export function generateBass(events: ChordEvent[], a: Arrangement, opts: { seed?
         }
         break;
       case "eighths":
-        for (let s = 0, i = 0; s < seg.len; s += 0.5, i++) hit(out, seg, s, 0.45, i % 2 ? root + 12 : root, v(s % 1 === 0 ? 92 : 70), gg(s));
+        for (let s = 0, i = 0; s < seg.len; s += 0.5, i++) {
+          const stepInBar = i % 8;
+          // 疾走感のある8分ロックベース: ルート連打を軸に、2拍目裏(step 3)と4拍目(step 6-7)で5度・オクターブ・アプローチへ動く
+          let p = root;
+          if (stepInBar === 3) p = root + 12;
+          else if (stepInBar === 6) p = fifth <= 58 ? fifth : root;
+          else if (stepInBar === 7 && seg.next) {
+            const target = bassPitch(seg.next.bass);
+            p = target > root ? target - 1 : target + 1;
+          }
+          const isAccent = stepInBar === 0 || stepInBar === 3 || stepInBar === 4;
+          hit(out, seg, s, 0.42, p, v(isAccent ? 94 : 76), gg(s));
+          // 小節末尾 (step 7) に16分のピックアップを入れて次小節頭へ突っ込む推進力を作る
+          if (rand && stepInBar === 7 && s + 0.25 < seg.len - 0.05) {
+            hit(out, seg, s + 0.25, 0.2, root, v(82), gg(s + 0.25));
+          }
+        }
         break;
       case "sixteenths": // 16分音符の疾走スラップ/シンセベース (Ys II / 80s ゲームロック)
         for (let s = 0, i = 0; s < seg.len; s += 0.25, i++) {

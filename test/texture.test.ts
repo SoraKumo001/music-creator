@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { assemble } from "../src/compose";
-import { applyCorpusHints, isCalmPrompt } from "../src/knowledge/corpus";
+import { applyCorpusHints, isCalmPrompt, isDrivingPrompt } from "../src/knowledge/corpus";
+import { pickGenreCards } from "../src/knowledge/genres";
 import { PlanSchema, resolveSections } from "../src/plan";
 import type { Note } from "../src/score";
 import { generateComp, type Arrangement } from "../src/theory/accompaniment";
 import { colorPlan } from "../src/theory/color";
+import { generateDrums } from "../src/theory/drums";
 import { developTheme } from "../src/theory/melody";
+import { GM_DRUMS } from "../src/theory/index";
 import {
   generateArp,
   generateHarmony,
@@ -375,5 +378,80 @@ describe("texture does not affect harmony generation", () => {
     });
     expect(calm.sections[0]!.comp).toBe("block");
     expect(calm.sections[0]!.bass).toBe("rootFifth");
+  });
+
+  it("evolves drum grooves across 4-bar phrases, section roles, and prechorus build-ups", () => {
+    const drumPlan = mk([[0, "Am"], [32, "F"], [48, "G"], [80, "Am"]], {
+      sections: [
+        { name: "Verse", bars: 8, role: "verse", drums: "rock", energy: 2 },
+        { name: "Pre", bars: 4, role: "prechorus", drums: "rock", energy: 2, swell: 1 },
+        { name: "Chorus", bars: 8, role: "chorus", drums: "rock", energy: 3 },
+      ],
+    });
+    const secs = resolveSections(drumPlan, 20, 4);
+    const notes = generateDrums(secs, 4, "button", false, { seed: 42 });
+
+    // 1. 同一セクション内で1小節目(beats 0..4)と2小節目(beats 4..8)と4小節目(beats 12..16)が単調な完全一致にならない
+    const barPattern = (b: number) =>
+      notes
+        .filter((n) => n.start >= b * 4 && n.start < (b + 1) * 4 && n.pitch !== GM_DRUMS.crash)
+        .map((n) => `${n.start - b * 4}:${n.pitch}`)
+        .join(",");
+    expect(barPattern(1)).not.toBe(barPattern(0));
+    expect(barPattern(3)).not.toBe(barPattern(0)); // 4小節目の中間ターンアラウンドフィル
+
+    // 2. サビ (bars 12..19) は同じ "rock" 指定でもライドシンバルやオープンハットが加わり、5小節目(bar 16)にもクラッシュが入る
+    const verseNotes = notes.filter((n) => n.start >= 0 && n.start < 32);
+    const chorusNotes = notes.filter((n) => n.start >= 48 && n.start < 76);
+    expect(chorusNotes.some((n) => n.pitch === GM_DRUMS.ride)).toBe(true);
+    expect(verseNotes.some((n) => n.pitch === GM_DRUMS.ride)).toBe(false);
+    expect(chorusNotes.some((n) => n.pitch === GM_DRUMS.crash && Math.abs(n.start - 64) < 1e-6)).toBe(true);
+
+    // 3. Prechorus 最終小節 (bar 11 = beats 44..48) はスネア+タム/キックのビルドアップクレッシェンドになる
+    const buildUp = notes.filter((n) => n.start >= 44 && n.start < 48 && n.pitch === GM_DRUMS.snare);
+    expect(buildUp.length).toBeGreaterThanOrEqual(6);
+
+    // 4. applyCorpusHints は全セクション同一ドラム指定のときに Chorus / Bridge を自動で変化させる
+    const varied = applyCorpusHints(
+      mk([[0, "Am"]], {
+        sections: [
+          { name: "V", bars: 4, role: "verse", drums: "rock", energy: 2 },
+          { name: "B", bars: 4, role: "bridge", drums: "rock", energy: 2 },
+          { name: "C", bars: 4, role: "chorus", drums: "rock", energy: 3 },
+        ],
+      }),
+      { prompt: "疾走感のあるロック", dense: true },
+    );
+    expect(new Set(varied.sections.map((s) => s.drums)).size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("boosts tempo, guitar chug, bass drive, and fast drums for '疾走感のあるロック'", () => {
+    expect(isDrivingPrompt("疾走感のあるロック")).toBe(true);
+    const cards = pickGenreCards("疾走感のあるロック").map((c) => c.id);
+    expect(cards).toContain("rock");
+    expect(cards).toContain("speed");
+
+    // LLM が 125 BPM・strum/root/rock という中速ロックの設計を出した場合でも、疾走仕様へ引き上げる
+    const slowRock = mk([[0, "Em"], [16, "C"], [32, "D"], [48, "Em"]], {
+      bpm: 125,
+      key: "E minor",
+      sections: [
+        { name: "Verse", bars: 4, role: "verse", comp: "strum", bass: "root", drums: "rock", energy: 2 },
+        { name: "Chorus", bars: 4, role: "chorus", comp: "block", bass: "rootFifth", drums: "rock", energy: 3 },
+      ],
+    });
+    const boosted = applyCorpusHints(slowRock, { prompt: "疾走感のあるロック", dense: true });
+    expect(boosted.bpm).toBeGreaterThanOrEqual(160);
+    expect(boosted.sections[0]!.comp).toBe("chug");
+    expect(boosted.sections[0]!.bass).toBe("eighths");
+    expect(boosted.sections[0]!.drums).toBe("drive");
+    expect(boosted.sections[1]!.drums).toBe("game16th");
+
+    // chug スタイルが1小節あたり8回以上の細かい刻みを生成することを確認
+    const secs = resolveSections(boosted, 8, 4);
+    const events = boosted.chords.map(([start, symbol]) => ({ start, symbol }));
+    const compNotes = generateComp(events, { sections: secs, totalBeats: 32, beatsPerBar: 4 }, { seed: 1 });
+    const bar1Starts = new Set(compNotes.filter((n) => n.start >= 0 && n.start < 4).map((n) => n.start));
+    expect(bar1Starts.size).toBeGreaterThanOrEqual(9); // 8分8打 + 16分ギャロップ
   });
 });

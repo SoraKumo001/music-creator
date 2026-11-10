@@ -206,6 +206,13 @@ export function isCalmPrompt(prompt?: string): boolean {
   return calmKeys.some((k) => p.includes(k));
 }
 
+/** 疾走感・高速・ドライブ感を求めるプロンプトか判定 */
+export function isDrivingPrompt(prompt?: string): boolean {
+  const p = (prompt ?? "").toLowerCase();
+  const drivingKeys = ["疾走", "高速", "速い", "ハイスピード", "駆け抜ける", "ドライブ", "アップテンポ", "激しい", "バトル", "戦闘", "ボス", "driving", "fast", "speed", "upbeat"];
+  return drivingKeys.some((k) => p.includes(k));
+}
+
 /** メロディ用音色のジャンル別優先順 */
 function melodyFamilyOrder(prompt?: string): string[] {
   const p = (prompt ?? "").toLowerCase();
@@ -247,25 +254,74 @@ export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan
 
   // セクション内のスタイルも「既定値のときだけ」コーパスの傾向へ寄せる
   // 既定値: comp="pad", bass="root", drums="basic"
-  const drumFor = (energy: number): string => {
-    if (energy <= 1) {
+  const drumFor = (energy: number, role: string, idx: number): string => {
+    if (energy <= 1 || role === "intro" || role === "outro") {
       // 静かなセクションは控えめなパターンを残す
       const sparse = hints.drumPatterns.find((d) => d === "halftime" || d === "lofi");
       if (sparse) return sparse;
     }
-    return hints.drumPatterns[0] ?? "basic";
+    if (role === "bridge") {
+      return hints.drumPatterns.find((d) => d === "halftime" || d === "shuffle") ?? hints.drumPatterns[1] ?? "halftime";
+    }
+    if (role === "chorus" || energy >= 3) {
+      return hints.drumPatterns.find((d) => d === "game16th" || d === "corpus7" || d === "corpus8") ?? hints.drumPatterns[0] ?? "rock";
+    }
+    return hints.drumPatterns[idx % Math.max(1, Math.min(2, hints.drumPatterns.length))] ?? "basic";
   };
-  const hinted = plan.sections.map((s) => {
+  const isCalm = isCalmPrompt(opts.prompt);
+  const isDriving = isDrivingPrompt(opts.prompt);
+  const isRockLike = /ロック|rock|バンド|ギター|guitar|パンク|punk/i.test(opts.prompt ?? "");
+
+  // 疾走系プロンプトなのに LLM が中速テンポ (120-145 BPM) を出した場合、疾走感が出る 160-176 BPM 帯へ引き上げる
+  if (isDriving && next.bpm < 156) {
+    next.bpm = Math.max(160, Math.min(176, Math.round(next.bpm * 1.28)));
+  }
+
+  const nonNoneDrums = plan.sections.map((s) => s.drums).filter((d) => d !== "none");
+  const allSameExplicitDrums =
+    opts.dense === true &&
+    !isCalm &&
+    plan.sections.length >= 3 &&
+    nonNoneDrums.length >= 3 &&
+    new Set(nonNoneDrums).size === 1 &&
+    nonNoneDrums[0] !== "basic";
+
+  const hinted = plan.sections.map((s, idx) => {
     // rich/dense では「16分で刻む」参照コーパスの性格に寄せる。
     // ただし LLM が明確に選んだスタイル (刻む系) は尊重し、持続系のみ置換する。
     const sustainedComp = s.comp === "pad" || s.comp === "block";
+    const slowCompForDriving = sustainedComp || s.comp === "strum" || s.comp === "offbeat";
     const sustainedBass = s.bass === "root" || s.bass === "rootFifth";
-    const denseSection = opts.dense === true && !isCalmPrompt(opts.prompt) && s.energy >= 2;
+    const slowBassForDriving = sustainedBass || s.bass === "walking";
+    const denseSection = opts.dense === true && !isCalm && s.energy >= 2;
+    const drivingSection = isDriving && s.energy >= 2 && s.role !== "break" && s.role !== "outro";
+
+    let comp = s.comp === "pad" ? hints.compStyles[0] ?? s.comp : denseSection && sustainedComp ? "arpeggio16" : s.comp;
+    if (drivingSection && slowCompForDriving) {
+      comp = isRockLike && s.role !== "intro" ? "chug" : (s.role === "chorus" || s.energy >= 3 ? "arpeggio16" : "chug");
+    }
+
+    let bass = s.bass === "root" ? hints.bassStyles[0] ?? s.bass : denseSection && sustainedBass ? "sixteenths" : s.bass;
+    if (drivingSection && slowBassForDriving) {
+      bass = s.role === "chorus" || s.energy >= 3 ? "sixteenths" : "eighths";
+    }
+
+    let drums = s.drums === "basic" ? drumFor(s.energy, s.role, idx) : s.drums;
+    if (drivingSection && (drums === "basic" || drums === "rock" || drums === "lofi" || drums === "halftime")) {
+      drums = s.role === "chorus" || s.energy >= 3 ? "game16th" : "drive";
+    } else if (allSameExplicitDrums && s.drums !== "none") {
+      // 全セクションに全く同じドラム名が指定された場合、サビとブリッジに変化を付ける
+      if (s.role === "bridge") {
+        drums = s.drums === "halftime" ? "rock" : "halftime";
+      } else if ((s.role === "chorus" || s.energy >= 3) && s.drums !== "game16th") {
+        drums = "game16th";
+      }
+    }
     return {
       ...s,
-      comp: s.comp === "pad" ? hints.compStyles[0] ?? s.comp : denseSection && sustainedComp ? "arpeggio16" : s.comp,
-      bass: s.bass === "root" ? hints.bassStyles[0] ?? s.bass : denseSection && sustainedBass ? "sixteenths" : s.bass,
-      drums: s.drums === "basic" ? drumFor(s.energy) : s.drums,
+      comp,
+      bass,
+      drums,
     };
   });
 
@@ -278,7 +334,7 @@ export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan
       bars: hints.sectionBars,
       comp: hints.compStyles[0] ?? "pad",
       bass: hints.bassStyles[0] ?? "root",
-      drums: drumFor(2),
+      drums: drumFor(2, "other", 0),
       energy: 2,
       role: "other",
       swell: 0,

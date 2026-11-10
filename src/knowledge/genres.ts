@@ -16,9 +16,15 @@ export const GENRES: GenreCard[] = [
   },
   {
     id: "rock",
-    keywords: ["rock", "ロック", "バンド"],
-    card: "Tempo 110-150 BPM. Chords: I-V-vi-IV or I-IV-V power chords. Drums: kick 1 and 3, snare 2 and 4, 8th-note hats. Instruments: overdriven guitar (29), bass (33) following root notes in 8ths, drums.",
-    progressions: ["rock-145", "rock-minor", "rock-andalusian", "pop-1564"],
+    keywords: ["rock", "ロック", "バンド", "ギター", "guitar", "パンク", "punk"],
+    card: "Tempo 135-172 BPM (160-178 BPM when driving/fast). Chords: vi-IV-I-V, I-V-vi-IV, or minor power-chord progressions (1-2 chords per bar). Arrangement: rhythm guitar chugging 8th/16th power chords (comp: 'chug'), driving 8th/16th bass (bass: 'eighths' in verse, 'sixteenths' in chorus), syncopated rock drums (drums: 'drive' in verse, 'game16th' in chorus). Instruments: overdriven/distortion guitar (29 or 30), finger/picked bass (33 or 34), drums.",
+    progressions: ["jpop-6415", "rock-minor", "rock-145", "rock-andalusian", "pop-1564"],
+  },
+  {
+    id: "speed",
+    keywords: ["疾走", "高速", "速い", "ハイスピード", "駆け抜ける", "アップテンポ", "ドライブ", "driving", "fast", "speed"],
+    card: "Fast driving tempo 160-180 BPM (never below 156 BPM). High-momentum rhythm section: tight 8th/16th palm-muted guitar chugs or fast arpeggios (comp: 'chug' or 'arpeggio16'), relentless 16th-note or syncopated 8th bass (bass: 'sixteenths' or 'eighths'), and double-kick driving drums (drums: 'drive' in verse/prechorus, 'game16th' in chorus). Melody uses syncopated 8th-note anticipations and soaring high-register chorus hooks.",
+    progressions: ["jpop-6415", "rock-minor", "jpop-komuro", "jpop-oudou"],
   },
   {
     id: "classical",

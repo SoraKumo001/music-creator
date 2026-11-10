@@ -17,17 +17,37 @@ const GM_NAME_TO_KEY: Record<string, keyof typeof GM_DRUMS> = {
   ride: "ride", rideBell: "ride", tambourine: "closedHat",
 };
 
-/** コーパス由来パターンを BAR_PATTERNS へ変換 */
+/** コーパス由来パターンを BAR_PATTERNS へ変換 (重複ノート除去 + 欠落パート補完) */
 function corpusPatterns(): Record<string, Hit[]> {
   const out: Record<string, Hit[]> = {};
   for (const pattern of CORPUS_DRUM_PATTERNS) {
-    const hits: Hit[] = [];
+    // 同一ステップ・同一ドラムキーの重複 (snare と electricSnare の同時発音等) を最大ベロシティで統合
+    const byStepKey = new Map<string, Hit>();
     for (const [step, name, vel] of pattern.steps) {
       const key = GM_NAME_TO_KEY[name];
       if (!key) continue;
-      hits.push([step, key, vel]);
+      const k = `${step}:${key}`;
+      const prev = byStepKey.get(k);
+      if (!prev || vel > prev[2]) byStepKey.set(k, [step, key, vel]);
     }
-    if (hits.length > 0) out[pattern.name] = hits;
+    const hits: Hit[] = [...byStepKey.values()];
+    if (hits.length === 0) continue;
+
+    // スネアロールのみの断片パターン (corpus2/4/5 等) が通常セクションに選ばれても単調にならないよう、
+    // キックまたはハイハット/シンバルが全く無い場合は基本パルスを補完する
+    const hasKick = hits.some(([, k]) => k === "kick");
+    const hasTop = hits.some(([, k]) => k === "closedHat" || k === "openHat" || k === "ride");
+    if (!hasKick) {
+      for (const s of [0, 8]) {
+        if (!byStepKey.has(`${s}:kick`)) hits.push([s, "kick", 96]);
+      }
+    }
+    if (!hasTop) {
+      for (const s of [0, 2, 4, 6, 8, 10, 12, 14]) {
+        hits.push([s, "closedHat", s % 4 === 0 ? 76 : 56]);
+      }
+    }
+    out[pattern.name] = hits;
   }
   return out;
 }
@@ -44,12 +64,31 @@ const BAR_PATTERNS: Record<string, Hit[]> = {
     ),
   ],
   rock: [
-    [0, "kick", 105],
-    [8, "kick", 100],
-    [4, "snare", 105],
-    [12, "snare", 105],
+    [0, "kick", 108],
+    [6, "kick", 92],
+    [8, "kick", 104],
+    [11, "kick", 88],
+    [4, "snare", 108],
+    [12, "snare", 108],
     ...[0, 2, 4, 6, 8, 10, 12, 14].map(
-      (s, i): Hit => [s, "closedHat", i % 2 ? 70 : 90],
+      (s, i): Hit => [s, "closedHat", i % 2 ? 72 : 92],
+    ),
+  ],
+  drive: [
+    [0, "kick", 112],
+    [3, "kick", 92],
+    [6, "kick", 100],
+    [8, "kick", 108],
+    [10, "kick", 96],
+    [14, "kick", 94],
+    [4, "snare", 112],
+    [7, "snare", 56],
+    [12, "snare", 112],
+    [15, "snare", 60],
+    [2, "openHat", 84],
+    [10, "openHat", 84],
+    ...[0, 4, 6, 8, 12, 14].map(
+      (s, i): Hit => [s, "closedHat", i % 2 ? 74 : 92],
     ),
   ],
   fourOnFloor: [
@@ -254,76 +293,179 @@ export function generateDrums(
         (b === sec.bars - 1 && sec.bars >= 2 && si < sections.length - 1) ||
         isPreEnding ||
         isLoopFill;
+      // 4小節周期の中間ターンアラウンド (8小節セクションの4小節目など、セクション末尾以外の4小節区切り)
+      const isMidTurnaround = Boolean(rand) && !isFill && beatsPerBar >= 4 && b % 4 === 3 && b < sec.bars - 1;
+      // ビルドアップ区間: prechorus または swell > 0 の最終小節
+      const isBuildUpBar = Boolean(rand) && (sec.role === "prechorus" || sec.swell > 0) && b === sec.bars - 1 && beatsPerBar >= 4;
+      // 2拍フィルを使うか (seed指定時、4小節以上のセクション末尾やサビ突入前など)
+      const nextSec = sections[si + 1];
+      const useTwoBeatFill =
+        Boolean(rand) &&
+        isFill &&
+        beatsPerBar >= 4 &&
+        (sec.bars >= 4 || nextSec?.role === "chorus" || sec.role === "prechorus" || isPreEnding);
+      const fillSpanBeats = isFill ? (useTwoBeatFill ? 2 : 1) : isMidTurnaround ? 1 : 0;
+
+      // セクション役割ごとのグルーヴ進化モード (seed指定時のみ有効化し、既存テスト互換を保つ)
+      const isChorusLike = Boolean(rand) && (sec.role === "chorus" || sec.role === "solo" || sec.gain > 1);
+      const isBridgeLike = Boolean(rand) && (sec.role === "bridge" || sec.role === "interlude");
+      const isSecondHalf = Boolean(rand) && sec.bars >= 6 && b >= Math.floor(sec.bars / 2);
+
       // 休止セクションはフィルと区切りだけ残す
       const sparse = sec.role === "break";
-      if (!sparse) {
+      if (!sparse && !isBuildUpBar) {
         for (const [step, drum, v] of pat) {
           const start = base + step / 4;
           if (start >= base + beatsPerBar) continue;
+          // フィルや中間ターンアラウンド区間では邪魔になるキック・スネア・ハットを空ける
           if (
-            isFill &&
-            start >= base + beatsPerBar - 1 &&
-            (drum === "kick" || drum === "snare")
-          )
+            fillSpanBeats > 0 &&
+            start >= base + beatsPerBar - fillSpanBeats &&
+            (drum === "kick" || drum === "snare" || (useTwoBeatFill && drum === "closedHat"))
+          ) {
             continue;
+          }
+
+          let actualDrum: keyof typeof GM_DRUMS = drum;
+          let actualVel = v;
+
+          if (rand) {
+            // サビ (chorus/solo) や長尺セクション後半ではクローズドハットをライドやオープンハットへ展開し、高揚感を出す
+            if (drum === "closedHat") {
+              if (isChorusLike && step % 4 === 0) {
+                actualDrum = "ride";
+                actualVel = Math.min(115, v + 12);
+              } else if (isChorusLike && (step === 6 || step === 14)) {
+                actualDrum = "openHat";
+                actualVel = Math.min(110, v + 8);
+              } else if (isSecondHalf && step === 14) {
+                actualDrum = "openHat";
+                actualVel = Math.min(105, v + 6);
+              }
+            }
+            // ブリッジでは裏拍やスネアの表情を変えてコントラストを作る
+            if (isBridgeLike && drum === "closedHat" && step % 4 === 2) {
+              actualDrum = "ride";
+            }
+            // ハイハットの16分/8分ベロシティに自然な強弱グルーヴ (拍頭 > 8分裏 > 16分裏) を付与
+            if (actualDrum === "closedHat" || actualDrum === "ride") {
+              const grooveMul = step % 4 === 0 ? 1.08 : step % 2 === 0 ? 0.94 : 0.82;
+              actualVel = Math.round(actualVel * grooveMul);
+            }
+          }
+
           notes.push({
-            pitch: GM_DRUMS[drum],
+            pitch: GM_DRUMS[actualDrum],
             start,
             duration: 0.25,
-            velocity: vel(v, g),
+            velocity: vel(actualVel, g),
           });
         }
-        // seed指定時: 2小節・4小節周期のマイクロバリエーション (ゴーストスネアやキック追加)
+
+        // seed指定時: 4小節周期のフレーズ展開 (2小節目のアンサー、3小節目の推進キック、4小節目の中間フィル)
         if (rand && !isFill && beatsPerBar >= 4) {
-          if (
-            b % 2 === 1 &&
-            (sec.drums === "rock" ||
-              sec.drums === "basic" ||
-              sec.drums === "lofi")
-          ) {
-            // 偶数小節: 4拍目裏(step 14)に軽いゴーストスネア
+          const phrasePos = b % 4;
+          if (phrasePos === 1) {
+            // 2小節目 (アンサー小節): シンコペーション・キック (step 6 または step 11) + 4拍目裏のゴーストスネア/オープンハット
+            notes.push({
+              pitch: GM_DRUMS.kick,
+              start: base + 2.75,
+              duration: 0.25,
+              velocity: vel(84, g),
+            });
+            notes.push({
+              pitch: isChorusLike ? GM_DRUMS.openHat : GM_DRUMS.snare,
+              start: base + 3.5,
+              duration: 0.25,
+              velocity: vel(isChorusLike ? 78 : 48, g),
+            });
+          } else if (phrasePos === 2 && (isChorusLike || isSecondHalf)) {
+            // 3小節目: サビや後半では1拍目裏(step 3)または3拍目裏(step 10)にダブルキックを入れて推進力を上げる
+            notes.push({
+              pitch: GM_DRUMS.kick,
+              start: base + 2.5,
+              duration: 0.25,
+              velocity: vel(88, g),
+            });
             notes.push({
               pitch: GM_DRUMS.snare,
-              start: base + 3.5,
+              start: base + 1.75,
               duration: 0.25,
-              velocity: vel(46, g),
+              velocity: vel(44, g),
             });
-          }
-          if (b % 4 === 3 && sec.drums === "fourOnFloor") {
-            // 4小節目: 4拍目裏(step 14)にオープンハット
-            notes.push({
-              pitch: GM_DRUMS.openHat,
-              start: base + 3.5,
-              duration: 0.25,
-              velocity: vel(80, g),
-            });
-          }
-          // コーパス抽出パターンも小節ごとに微変化させる (単調さを避ける)
-          if (sec.drums.startsWith("corpus")) {
-            if (b % 2 === 1) {
-              notes.push({
-                pitch: GM_DRUMS.snare,
-                start: base + 2.75,
-                duration: 0.25,
-                velocity: vel(40, g),
-              });
-            }
-            if (b % 4 === 3) {
-              notes.push({
-                pitch: GM_DRUMS.openHat,
-                start: base + beatsPerBar - 0.5,
-                duration: 0.25,
-                velocity: vel(72, g),
-              });
-            }
+          } else if (isMidTurnaround) {
+            // 4小節目 (中間ターンアラウンド): 4拍目にスネア+タム+オープンハットの小フィルを入れて5小節目へ繋ぐ
+            notes.push(
+              { pitch: GM_DRUMS.snare, start: base + beatsPerBar - 1, duration: 0.25, velocity: vel(82, g) },
+              { pitch: GM_DRUMS.tomHigh, start: base + beatsPerBar - 0.75, duration: 0.25, velocity: vel(86, g) },
+              { pitch: GM_DRUMS.tomLow, start: base + beatsPerBar - 0.5, duration: 0.25, velocity: vel(90, g) },
+              { pitch: GM_DRUMS.openHat, start: base + beatsPerBar - 0.25, duration: 0.25, velocity: vel(88, g) },
+            );
           }
         }
       }
+
+      // prechorus / swell > 0 の最終小節ビルドアップ (スネア+フロアタム+キックの8分/16分クレッシェンド)
+      if (isBuildUpBar) {
+        notes.push({ pitch: GM_DRUMS.crash, start: base, duration: 1, velocity: vel(85, g) });
+        for (let i = 0; i < 8; i++) {
+          const stepStart = base + i * 0.5;
+          if (stepStart >= base + beatsPerBar - (isFill ? 1 : 0)) break;
+          const buildVel = 58 + i * 7;
+          notes.push(
+            { pitch: GM_DRUMS.snare, start: stepStart, duration: 0.25, velocity: vel(buildVel, g) },
+            { pitch: i % 2 === 0 ? GM_DRUMS.kick : GM_DRUMS.tomLow, start: stepStart, duration: 0.25, velocity: vel(buildVel - 4, g) },
+          );
+        }
+      }
+
       if (isFill) {
-        // seed指定時はフィルインにもバリエーション
-        const fillType = rand ? Math.floor(rand() * 3) : 0;
-        if (fillType === 1) {
-          // スネアクレッシェンド
+        // seed指定時はセクション遷移ごとに異なるフィル (6種類、1拍〜2拍) を選択
+        const fillType = rand ? (Math.floor(rand() * 6) + si) % 6 : 0;
+        if (useTwoBeatFill && fillType >= 2) {
+          const fBase = base + beatsPerBar - 2;
+          if (fillType === 2) {
+            // 2拍: 3+3+2 シンコペーション・タム＆スネア・ロックフィル
+            const seq: [number, keyof typeof GM_DRUMS, number][] = [
+              [0, "snare", 86], [0.25, "snare", 72], [0.5, "tomHigh", 90], [0.75, "kick", 94],
+              [1.0, "snare", 94], [1.25, "tomHigh", 96], [1.5, "tomLow", 100], [1.75, "tomLow", 106],
+            ];
+            for (const [ofs, d, fv] of seq) {
+              notes.push({ pitch: GM_DRUMS[d], start: fBase + ofs, duration: 0.25, velocity: vel(fv, g) });
+            }
+          } else if (fillType === 3) {
+            // 2拍: フル・タムパノラマ (スネア -> ハイタム -> ロータム -> オープンハット)
+            const seq: [number, keyof typeof GM_DRUMS, number][] = [
+              [0, "kick", 96], [0, "snare", 84], [0.25, "snare", 88], [0.5, "tomHigh", 90], [0.75, "tomHigh", 94],
+              [1.0, "kick", 96], [1.25, "tomLow", 96], [1.5, "tomLow", 102], [1.75, "snare", 108],
+            ];
+            for (const [ofs, d, fv] of seq) {
+              notes.push({ pitch: GM_DRUMS[d], start: fBase + ofs, duration: 0.25, velocity: vel(fv, g) });
+            }
+          } else if (fillType === 4) {
+            // 2拍: 80s アーケード・ストップ＆ロール (3拍目キメ -> 16分スネア+タム連打)
+            notes.push(
+              { pitch: GM_DRUMS.kick, start: fBase, duration: 0.25, velocity: vel(104, g) },
+              { pitch: GM_DRUMS.openHat, start: fBase, duration: 0.5, velocity: vel(90, g) },
+              { pitch: GM_DRUMS.snare, start: fBase + 0.75, duration: 0.25, velocity: vel(78, g) },
+              { pitch: GM_DRUMS.snare, start: fBase + 1.0, duration: 0.25, velocity: vel(86, g) },
+              { pitch: GM_DRUMS.snare, start: fBase + 1.25, duration: 0.25, velocity: vel(94, g) },
+              { pitch: GM_DRUMS.tomHigh, start: fBase + 1.5, duration: 0.25, velocity: vel(100, g) },
+              { pitch: GM_DRUMS.tomLow, start: fBase + 1.75, duration: 0.25, velocity: vel(106, g) },
+            );
+          } else {
+            // 2拍: 16分スネアロール・クレッシェンド
+            for (let i = 0; i < 8; i++) {
+              notes.push({
+                pitch: i === 7 ? GM_DRUMS.tomLow : GM_DRUMS.snare,
+                start: fBase + i * 0.25,
+                duration: 0.25,
+                velocity: vel(54 + i * 8, g),
+              });
+            }
+          }
+        } else if (fillType === 1) {
+          // 1拍: スネアクレッシェンド
           for (let i = 0; i < 4; i++) {
             notes.push({
               pitch: GM_DRUMS.snare,
@@ -333,32 +475,15 @@ export function generateDrums(
             });
           }
         } else if (fillType === 2) {
-          // キック+クラッシュ同期シンコペーション
-          notes.push({
-            pitch: GM_DRUMS.kick,
-            start: base + beatsPerBar - 1,
-            duration: 0.25,
-            velocity: vel(95, g),
-          });
-          notes.push({
-            pitch: GM_DRUMS.snare,
-            start: base + beatsPerBar - 0.75,
-            duration: 0.25,
-            velocity: vel(85, g),
-          });
-          notes.push({
-            pitch: GM_DRUMS.snare,
-            start: base + beatsPerBar - 0.5,
-            duration: 0.25,
-            velocity: vel(90, g),
-          });
-          notes.push({
-            pitch: GM_DRUMS.tomLow,
-            start: base + beatsPerBar - 0.25,
-            duration: 0.25,
-            velocity: vel(95, g),
-          });
+          // 1拍: キック+スネア+タム同期シンコペーション
+          notes.push(
+            { pitch: GM_DRUMS.kick, start: base + beatsPerBar - 1, duration: 0.25, velocity: vel(95, g) },
+            { pitch: GM_DRUMS.snare, start: base + beatsPerBar - 0.75, duration: 0.25, velocity: vel(85, g) },
+            { pitch: GM_DRUMS.snare, start: base + beatsPerBar - 0.5, duration: 0.25, velocity: vel(90, g) },
+            { pitch: GM_DRUMS.tomLow, start: base + beatsPerBar - 0.25, duration: 0.25, velocity: vel(95, g) },
+          );
         } else {
+          // 1拍 (既定): スネア×2 -> ハイタム -> ロータム
           for (let i = 0; i < 4; i++) {
             const pitch =
               i < 2
@@ -375,12 +500,13 @@ export function generateDrums(
           }
         }
       }
-      if (b === 0)
+      // セクション先頭、または長尺サビの5小節目頭 (中間ターンアラウンド直後) にクラッシュシンバル
+      if (b === 0 || (Boolean(rand) && b === 4 && sec.bars >= 6 && isChorusLike))
         notes.push({
           pitch: GM_DRUMS.crash,
           start: base,
           duration: 1,
-          velocity: vel(85, g),
+          velocity: vel(b === 0 ? 85 : 78, g),
         });
     }
   });
