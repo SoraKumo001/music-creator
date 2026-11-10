@@ -20,6 +20,7 @@ import {
 import { melodyMessages, planMessages } from "./prompt";
 import { NoteSchema, ScoreSchema, type Note, type Score } from "./score";
 import {
+  chordAt,
   generateBass,
   generateComp,
   type Arrangement,
@@ -37,6 +38,7 @@ import {
 import { repairPlan } from "./theory/repair";
 import { analyzeChord } from "./theory/roman";
 import { parseKeyName } from "./theory/key";
+import { parseKey, SCALES } from "./theory/index";
 import { mulberry32, pickSoftmaxSeeded, resolveSeed } from "./util/random";
 import { generateOrchestra } from "./theory/orchestra";
 import {
@@ -47,6 +49,7 @@ import {
 } from "./theory/texture";
 import { colorPlan } from "./theory/color";
 import { normalizeForm } from "./theory/form";
+import { reduceDissonances } from "./theory/dissonance";
 import { reharmonizePlan, type ReharmSuggestion } from "./theory/reharmonize";
 import {
   applyCorpusHints,
@@ -250,6 +253,10 @@ export type ComposeStats = {
   candidates: { score: number; notes: number }[];
   chosen: number;
   chosenParts: MelodyScore["parts"];
+  /** 不協和音の後処理で修正した数 */
+  dissonanceFixes: number;
+  /** 後処理後に残った衝突数 */
+  dissonancesRemaining: number;
 };
 export type SectionInfo = {
   name: string;
@@ -686,13 +693,36 @@ export async function compose(
     counter = counterAll;
   }
 
+  const assembled = assemble(finalPlan, sections, melody, bars, {
+    seed: useVariety ? seed : undefined,
+    counter,
+    texture: complexity !== "simple",
+    arp: isDense,
+    arpSixteenth: isDense,
+  });
+
+  // ---- (3) 不協和音の後処理 ----
+  // 声部をまたぐ短2度/短9度を、優先度の低い声部だけ動かして解消する (旋律は不変)
+  const chordEvents: ChordEvent[] = finalPlan.chords.map(([start, symbol]) => ({ start, symbol }));
+  const chordTonesAt = (beat: number) => chordAt(chordEvents, beat).tones;
+  const scaleTonesAt = (beat: number) => {
+    const { root, scale } = parseKey(keyAtBeat(finalPlan, beat, beatsPerBar));
+    return SCALES[scale]!.map((i) => (i + root) % 12);
+  };
+  const deduped = reduceDissonances(
+    assembled.tracks.map((t) => ({ name: t.name, channel: t.channel, notes: t.notes })),
+    { chordTonesAt, scaleTonesAt, maxFixes: 600 },
+  );
+
   const score = normalizeScore(
-    assemble(finalPlan, sections, melody, bars, {
-      seed: useVariety ? seed : undefined,
-      counter,
-      texture: complexity !== "simple",
-      arp: isDense,
-      arpSixteenth: isDense,
+    ScoreSchema.parse({
+      ...assembled,
+      tracks: deduped.tracks
+        .filter((t) => t.notes.length > 0)
+        .map((t) => {
+          const src = assembled.tracks.find((x) => x.name === t.name);
+          return { name: t.name, program: src?.program ?? 0, channel: t.channel, notes: t.notes };
+        }),
     }),
     bars,
     { swing: finalPlan.swing },
@@ -724,6 +754,9 @@ export async function compose(
       candidates: allCands,
       chosen: 0,
       chosenParts,
+      dissonanceFixes: deduped.fixes.length,
+      dissonancesRemaining: deduped.remaining.length,
     },
   };
 }
+

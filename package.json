@@ -13,6 +13,7 @@
     "analyze:corpus": "tsx scripts/analyze-corpus.ts",
     "compare:corpus": "tsx scripts/compare-corpus.ts",
     "eval:corpus-fit": "tsx scripts/eval-corpus-fit.ts",
+    "eval:dissonance": "tsx scripts/eval-dissonance.ts",
     "compose": "tsx scripts/compose.ts"
   },
   "dependencies": {
@@ -29,4 +30,5 @@
     "wrangler": "^4.159.0"
   }
 }
+
 

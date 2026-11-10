@@ -277,8 +277,12 @@ const gainFor = (pct) => 1.8 * Math.pow(pct / 100, 2);
 
 let volumePct = 85;
 try {
-  const saved = Number(localStorage.getItem("mc-volume"));
-  if (Number.isFinite(saved) && saved >= 0 && saved <= 100) volumePct = saved;
+  // 未保存は null。Number(null) は 0 になるため、必ず生の値で存在確認してから数値化する
+  const raw = localStorage.getItem("mc-volume");
+  if (raw !== null && raw.trim() !== "") {
+    const saved = Number(raw);
+    if (Number.isFinite(saved) && saved >= 0 && saved <= 100) volumePct = saved;
+  }
 } catch {}
 
 /** マスターバス: 音量 → 空間系(リバーブ) → コンプレッサー → リミッター → 出力 */
