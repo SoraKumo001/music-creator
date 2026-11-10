@@ -10,6 +10,9 @@
     "eval": "tsx scripts/eval-harmony.ts",
     "eval:diversity": "tsx scripts/eval-diversity.ts",
     "eval:complexity": "tsx scripts/eval-complexity.ts",
+    "analyze:corpus": "tsx scripts/analyze-corpus.ts",
+    "compare:corpus": "tsx scripts/compare-corpus.ts",
+    "eval:corpus-fit": "tsx scripts/eval-corpus-fit.ts",
     "compose": "tsx scripts/compose.ts"
   },
   "dependencies": {
@@ -26,3 +29,4 @@
     "wrangler": "^4.159.0"
   }
 }
+

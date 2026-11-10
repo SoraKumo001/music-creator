@@ -1,10 +1,36 @@
 import { GM_DRUMS } from "./index";
+import { CORPUS_DRUM_PATTERNS } from "../knowledge/drum-patterns.generated";
 import type { EndingStyle, Section } from "../plan";
 import type { Note } from "../score";
 import { mulberry32 } from "../util/random";
 
 /** 1小節(16分グリッド)のパターン。値は [ステップ(0-15), ドラム名, ベロシティ] */
 type Hit = [number, keyof typeof GM_DRUMS, number];
+
+/** コーパスから抽出したパターンのドラム名 → GM_DRUMS のキー */
+const GM_NAME_TO_KEY: Record<string, keyof typeof GM_DRUMS> = {
+  acousticBassDrum: "kick", bassDrum: "kick", sideStick: "snare", snare: "snare",
+  handClap: "snare", electricSnare: "snare", lowFloorTom: "tomLow", highFloorTom: "tomLow",
+  pedalHat: "closedHat", closedHat: "closedHat", openHat: "openHat",
+  lowTom: "tomLow", lowMidTom: "tomLow", hiMidTom: "tomHigh", highTom: "tomHigh",
+  crash: "crash", crash2: "crash", chineseCymbal: "crash", splash: "crash",
+  ride: "ride", rideBell: "ride", tambourine: "closedHat",
+};
+
+/** コーパス由来パターンを BAR_PATTERNS へ変換 */
+function corpusPatterns(): Record<string, Hit[]> {
+  const out: Record<string, Hit[]> = {};
+  for (const pattern of CORPUS_DRUM_PATTERNS) {
+    const hits: Hit[] = [];
+    for (const [step, name, vel] of pattern.steps) {
+      const key = GM_NAME_TO_KEY[name];
+      if (!key) continue;
+      hits.push([step, key, vel]);
+    }
+    if (hits.length > 0) out[pattern.name] = hits;
+  }
+  return out;
+}
 
 const BAR_PATTERNS: Record<string, Hit[]> = {
   lofi: [
@@ -84,9 +110,57 @@ const BAR_PATTERNS: Record<string, Hit[]> = {
       (s, i): Hit => [s, "closedHat", i % 4 === 0 ? 88 : i % 2 === 0 ? 72 : 56],
     ),
   ],
+  // コーパスから抽出した実パターン (corpus1..)。リストは生成データの有無で変わる
+  ...corpusPatterns(),
 };
 
 export const DRUM_PATTERN_NAMES = Object.keys(BAR_PATTERNS);
+
+/** コーパス由来のパターン名 (生成側で優先候補として使う) */
+export const CORPUS_PATTERN_NAMES = Object.keys(corpusPatterns());
+
+/** 各ドラムパターンの GM 音別の出現比 (合計1)。コーパスとの比較用 */
+export function drumPatternPitchShares(): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const [name, hits] of Object.entries(BAR_PATTERNS)) {
+    const counts: Record<string, number> = {};
+    for (const [, drum] of hits) {
+      const pitch = String(GM_DRUMS[drum as keyof typeof GM_DRUMS]);
+      counts[pitch] = (counts[pitch] ?? 0) + 1;
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+    const shares: Record<string, number> = {};
+    for (const [pitch, c] of Object.entries(counts)) shares[pitch] = c / total;
+    out[name] = shares;
+  }
+  return out;
+}
+
+/** パターンの分類別ヒット数 (人間向けの要約) */
+export type DrumPatternMix = { kick: number; snare: number; hat: number; cymbal: number; tom: number };
+const CATEGORY: Record<string, keyof DrumPatternMix> = {
+  kick: "kick", snare: "snare", closedHat: "hat", openHat: "hat", pedalHat: "hat",
+  ride: "cymbal", rideBell: "cymbal", crash: "cymbal", crash2: "cymbal", splash: "cymbal", chineseCymbal: "cymbal",
+  tomLow: "tom", tomHigh: "tom", lowTom: "tom", midTom: "tom", highTom: "tom",
+};
+
+/** 各ドラムパターンの構成比 (合計1) */
+export function drumPatternMixes(): Record<string, DrumPatternMix> {
+  const out: Record<string, DrumPatternMix> = {};
+  for (const [name, hits] of Object.entries(BAR_PATTERNS)) {
+    const mix: DrumPatternMix = { kick: 0, snare: 0, hat: 0, cymbal: 0, tom: 0 };
+    for (const [, drum] of hits) {
+      const cat = CATEGORY[drum as string];
+      if (cat) mix[cat] += 1;
+    }
+    const total = Object.values(mix).reduce((a, b) => a + b, 0) || 1;
+    out[name] = {
+      kick: mix.kick / total, snare: mix.snare / total, hat: mix.hat / total,
+      cymbal: mix.cymbal / total, tom: mix.tom / total,
+    };
+  }
+  return out;
+}
 
 const vel = (v: number, gain: number) =>
   Math.max(1, Math.min(127, Math.round(v * gain)));

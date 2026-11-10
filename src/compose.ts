@@ -14,7 +14,11 @@ import { analyzeChord } from "./theory/roman";
 import { parseKeyName } from "./theory/key";
 import { mulberry32, pickSoftmaxSeeded, resolveSeed } from "./util/random";
 import { generateOrchestra } from "./theory/orchestra";
+import { generateArp, generateHarmony, generatePad } from "./theory/texture";
+import { colorPlan } from "./theory/color";
+import { normalizeForm } from "./theory/form";
 import { reharmonizePlan, type ReharmSuggestion } from "./theory/reharmonize";
+import { applyCorpusHints, corpusRuleHints } from "./knowledge/corpus";
 import { validatePlan, type Issue } from "./theory/validate";
 import { evaluateComplexity, type ComplexitySummary } from "./eval/complexity";
 
@@ -37,7 +41,16 @@ export function parseCompactNotes(raw: unknown): Note[] {
 /** 設計 + メロディから Score を組み立てる(伴奏・ベース・ドラムはルール層) */
 export function assemble(
   plan: Plan, sections: Section[], melody: Note[], bars: number,
-  opts: { seed?: number; counter?: Note[] } = {},
+  opts: {
+    seed?: number;
+    counter?: Note[];
+    /** パッド・ハモリなど補助声部を足す */
+    texture?: boolean;
+    /** アルペジオ声部を足す */
+    arp?: boolean;
+    /** アルペジオを常時16分にする */
+    arpSixteenth?: boolean;
+  } = {},
 ): Score {
   const beatsPerBar = (plan.timeSignature[0] * 4) / plan.timeSignature[1];
   if (plan.ensemble === "orchestra") {
@@ -50,6 +63,15 @@ export function assemble(
     { name: plan.melodyName, program: plan.melodyProgram, channel: 0, notes: melody },
     ...(opts.counter && opts.counter.length > 0
       ? [{ name: "Counter", program: plan.melodyProgram, channel: 3, notes: opts.counter }]
+      : []),
+    ...(opts.texture
+      ? [{ name: "Harmony", program: 48, channel: 6, notes: generateHarmony(melody, plan, beatsPerBar) }]
+      : []),
+    ...(opts.texture
+      ? [{ name: "Pad", program: 89, channel: 4, notes: generatePad(events, a) }]
+      : []),
+    ...(opts.arp
+      ? [{ name: "Arp", program: plan.melodyProgram, channel: 5, notes: generateArp(events, a, { seed: opts.seed, sixteenth: opts.arpSixteenth }) }]
       : []),
     { name: "Chords", program: plan.compProgram, channel: 1, notes: generateComp(events, a, { seed: opts.seed }) },
     { name: "Bass", program: plan.bassProgram, channel: 2, notes: generateBass(events, a, { seed: opts.seed }) },
@@ -74,6 +96,8 @@ export type HarmonyLine = { beat: number; symbol: string; numeral: string; fn: "
 export type ComposeResult = {
   score: Score;
   midi: Uint8Array;
+  /** 補正・リハモ適用後の最終プラン (評価・デバッグ用) */
+  plan: Plan;
   sections: SectionInfo[];
   attempts: number;
   stats: ComposeStats;
@@ -93,15 +117,22 @@ export type ComposeOptions = {
   complexity?: Complexity;
   /** 対旋律トラックを付ける (省略時は rich かつ band のとき true) */
   counterMelody?: boolean;
+  /** コーパス統合のマスタースイッチ (false で両方オフ) */
+  corpus?: boolean;
+  /** コーパス知見をプロンプトへ入れるか (既定 true) */
+  corpusPrompt?: boolean;
+  /** コーパス統計をルール層へ適用するか (既定 true) */
+  corpusRules?: boolean;
 };
 
 const TEMPS = [0.7, 0.9, 1.1, 0.8, 1.3];
 
+
+
 /** 長い曲は16小節ずつに区切ってメロディを生成する (1回のLLM出力肥大を避ける) */
 const CHUNK_BARS = 16;
 
-/** rich向け: 進行の一部を同機能の代理和音に置換して複雑化する (最大2和音、先頭・末尾2小節は除く) */
-function applyReharm(plan: Plan, bars: number, beatsPerBar: number, seed: number): Plan {
+/** rich向け: 進行の一部を同機能の代理和音に置換して複雑化する (最大2和音、先頭・末尾2小節は除く) */function applyReharm(plan: Plan, bars: number, beatsPerBar: number, seed: number): Plan {
   const pool = reharmonizePlan(plan).filter(
     (s) => s.beat >= 2 * beatsPerBar && s.beat < (bars - 2) * beatsPerBar,
   );
@@ -132,7 +163,8 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
   const count = (u?: Usage) => { outputTokens += u?.completion_tokens ?? 0; };
 
   // ---- (1) 設計 ----
-  const messages: ChatMessage[] = planMessages(prompt, bars, loop, ensemble, { seed, creativity, complexity });
+  const useCorpusPrompt = opts.corpus !== false && opts.corpusPrompt !== false;
+  const messages: ChatMessage[] = planMessages(prompt, bars, loop, ensemble, { seed, creativity, complexity, corpus: useCorpusPrompt });
   let plan: Plan | undefined;
   let planAttempts = 0;
   let lastError = "";
@@ -159,6 +191,13 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
   if (!plan) throw new Error(`Failed to design the song after ${maxAttempts} attempts: ${lastError}`);
   const planMs = Date.now() - t0;
 
+  // ---- (1.4) フォーム正規化 (細切れセクションを併合) ----
+  if (complexity !== "simple" && plan) {
+    const hinted = corpusRuleHints({ prompt });
+    const form = normalizeForm(plan, bars, { targetBars: hinted?.sectionBars ?? 6 });
+    plan = form.plan;
+  }
+
   // ---- (1.5) 和声の検証・補正 ----
   // creativity>=0.4で終止を分散、>=0.4でセクション境界の強制V化を半分残す (デフォルト0.5でも有効)
   // seed未指定の旧来呼び出しは従来通り (strict/authentic) のまま。rich は多様化を強制
@@ -168,31 +207,41 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
     : {});
   plan = repaired.plan;
   if (complexity === "rich") plan = applyReharm(plan, bars, (plan.timeSignature[0] * 4) / plan.timeSignature[1], seed);
+  // 和声の色付け (借用・二次ドミナント・sus4)。standard以上で、コーパス統計を尊重する
+  if (complexity !== "simple" && opts.corpus !== false) {
+    const strength = complexity === "rich" ? 1 : 0.8;
+    const colored = colorPlan(plan, bars, seed, { strength });
+    plan = colored.plan;
+  }
+  // ルール層にもコーパスを反映 (corpus:false でA/B計測可)
+  if (opts.corpus !== false && opts.corpusRules !== false) plan = applyCorpusHints(plan, { prompt, dense: complexity !== "simple" });
+  // 以降は確定したプランを使う (クロージャ内での絞り込みのため)
+  const finalPlan: Plan = plan!;
 
-  const beatsPerBar = (plan.timeSignature[0] * 4) / plan.timeSignature[1];
-  const harmony: HarmonyLine[] = plan.chords.map(([beat, symbol]) => {
-    const a = analyzeChord(symbol, parseKeyName(keyAtBeat(plan, beat, beatsPerBar)));
+  const beatsPerBar = (finalPlan.timeSignature[0] * 4) / finalPlan.timeSignature[1];
+  const harmony: HarmonyLine[] = finalPlan.chords.map(([beat, symbol]) => {
+    const a = analyzeChord(symbol, parseKeyName(keyAtBeat(finalPlan, beat, beatsPerBar)));
     return { beat, symbol, numeral: a.numeral, fn: a.fn };
   });
-  const issues = validatePlan(plan, bars);
-  const suggestions = reharmonizePlan(plan);
+  const issues = validatePlan(finalPlan, bars);
+  const suggestions = reharmonizePlan(finalPlan);
 
-  const sections = resolveSections(plan, bars, beatsPerBar);
+  const sections = resolveSections(finalPlan, bars, beatsPerBar);
 
   // ---- (2) メロディ候補を並列生成して採点 (長い曲は16小節ずつ) ----
   const chunkOf = (b0: number, b1: number): MelodyContext => {
     const s0 = b0 * beatsPerBar;
     const scoped: ChordEvent[] = [];
-    for (const [t, symbol] of [...plan.chords].sort((a, b) => a[0] - b[0])) {
+    for (const [t, symbol] of [...finalPlan.chords].sort((a, b) => a[0] - b[0])) {
       if (t < 0 || t >= s1Of(b1)) continue;
       if (t <= s0) { scoped.length = 0; scoped.push({ start: 0, symbol }); }
       else scoped.push({ start: t - s0, symbol });
     }
     return {
-      key: keyAtBeat(plan, s0, beatsPerBar),
+      key: keyAtBeat(finalPlan, s0, beatsPerBar),
       chords: scoped,
       bars: b1 - b0, beatsPerBar,
-      keyChanges: (plan.keyChanges ?? []).filter((kc) => kc.bar >= b0 && kc.bar < b1).map((kc) => ({ bar: kc.bar - b0, key: kc.key })),
+      keyChanges: (finalPlan.keyChanges ?? []).filter((kc) => kc.bar >= b0 && kc.bar < b1).map((kc) => ({ bar: kc.bar - b0, key: kc.key })),
     };
   };
   const s1Of = (b1: number) => b1 * beatsPerBar;
@@ -207,7 +256,7 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
   let chosenParts: MelodyScore["parts"] = {};
   for (const { b0, b1 } of ranges) {
     const ctx = chunkOf(b0, b1);
-    const mMessages = melodyMessages(prompt, plan, sections, bars, beatsPerBar, {
+    const mMessages = melodyMessages(prompt, finalPlan, sections, bars, beatsPerBar, {
       fromBar: b0, toBar: b1,
       prevTail: melody.slice(-4).map((n) => ({ pitch: n.pitch, start: n.start })),
     });
@@ -254,7 +303,7 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
         .filter((n) => n.start >= s0 && n.start < s1Of(b1))
         .map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration }));
       if (inRange.length === 0) continue;
-      const cMessages = melodyMessages(prompt, plan, sections, bars, beatsPerBar, {
+      const cMessages = melodyMessages(prompt, finalPlan, sections, bars, beatsPerBar, {
         fromBar: b0, toBar: b1, counterTo: inRange,
       });
       const results = await Promise.allSettled(
@@ -277,19 +326,26 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
   }
 
   const score = normalizeScore(
-    assemble(plan, sections, melody, bars, { seed: useVariety ? seed : undefined, counter }),
+    assemble(finalPlan, sections, melody, bars, {
+      seed: useVariety ? seed : undefined,
+      counter,
+      texture: complexity !== "simple",
+      arp: complexity !== "simple",
+      arpSixteenth: complexity !== "simple",
+    }),
     bars,
-    { swing: plan.swing },
+    { swing: finalPlan.swing },
   );
   return {
     score,
     midi: scoreToMidi(score),
+    plan: finalPlan,
     sections: sections.map(({ name, startBar, bars: b, role }) => ({ name, startBar, bars: b, role })),
     attempts: planAttempts,
     harmony,
     issues,
     suggestions,
-    complexity: evaluateComplexity([{ name: plan.title, bars, plan, score }]),
+    complexity: evaluateComplexity([{ name: finalPlan.title, bars, plan: finalPlan, score }]),
     stats: {
       ms: Date.now() - t0, planMs, melodyMs, planAttempts, outputTokens, repairs: repaired.fixes.length,
       candidates: allCands,
@@ -298,3 +354,16 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
     },
   };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

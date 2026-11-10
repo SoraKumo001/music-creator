@@ -1,4 +1,5 @@
 import { pickGenreCards } from "./knowledge/genres";
+import { corpusGuidance } from "./knowledge/corpus";
 import { PROGRESSIONS, progressionById, type ProgressionCard } from "./knowledge/progressions";
 import type { ChatMessage } from "./llm/provider";
 import { SECTION_ROLES, type Complexity, type Ensemble, type Plan, type Section } from "./plan";
@@ -72,13 +73,22 @@ Details:
 - Use 4-6 different chords. Use a different progression for the B/chorus section than for A.
 - Variety (important — every generation must sound different): avoid the default C major / 120 BPM / I–V–vi–IV unless the request asks for it. Pick a key, tempo and borrowed/secondary-dominant color that fits the mood. Use at least one of: inversion (C/E), tension (maj7/9/add9), or borrowing (iv, bVI, bVII) where it fits the style.`;
 
-export type PlanPromptOptions = { seed?: number; creativity?: number; complexity?: Complexity };
+export type PlanPromptOptions = {
+  seed?: number;
+  creativity?: number;
+  complexity?: Complexity;
+  /** false にするとコーパス由来の知見を注入しない (A/B 計測用。既定は注入する) */
+  corpus?: boolean;
+};
 
 function complexityBlock(bars: number, complexity: Complexity = "standard"): string {
   if (complexity === "simple") {
     return `\n\nSimplicity: keep the song simple — at most 2 sections, diatonic chords only, no keyChanges, swing 0.`;
   }
   if (complexity === "rich" || bars >= 16) {
+    const sectionHint = bars >= 24
+      ? `\n- Section length: aim for 6-8 bars per section (avoid making every section exactly 4 bars); the reference corpus averages about 6 bars.`
+      : "";
     return `\n\nAmbition (longer song): use 4-6 sections with distinct roles including a chorus and a bridge or break.
 - keyChanges: for 16+ bars you MAY modulate once (e.g. up a whole step for the final chorus, or to a closely related key for the bridge). List at most 2 entries; the first bar is 0. End the song in the final key.
 - Contrast the bridge: different feel, sparser texture, or a new borrowed color; build back with prechorus "swell" 1.`;
@@ -107,7 +117,7 @@ This song will be LOOPED. The last bar is a turnaround, not an ending:
 The arrangement will be ORCHESTRAL (strings, woodwinds, brass, timpani, harp). Focus on chords, sections and the melody; "comp", "bass" and "drums" styles are ignored. Use energy 1 for intimate passages and energy 3 for the full tutti.`
     : "";
   return [
-    { role: "system", content: PLAN_SYSTEM + knowledge + progressionBlock(userPrompt, opts.seed) + complexityBlock(bars, opts.complexity) + endingRule + ensembleRule },
+    { role: "system", content: PLAN_SYSTEM + knowledge + progressionBlock(userPrompt, opts.seed) + (opts.corpus === false ? "" : corpusGuidance()) + complexityBlock(bars, opts.complexity) + endingRule + ensembleRule },
     { role: "user", content: `Request: ${userPrompt}\nLength: ${bars} bars.` },
   ];
 }
@@ -192,3 +202,5 @@ export function melodyMessages(
     { role: "user", content: user },
   ];
 }
+
+
