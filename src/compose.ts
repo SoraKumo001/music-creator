@@ -176,7 +176,7 @@ export function assemble(
             name: "Harmony",
             program: 48,
             channel: 6,
-            notes: generateHarmony(melody, plan, beatsPerBar, { chords: events }),
+            notes: generateHarmony(melody, plan, beatsPerBar, { chords: events, seed: opts.seed }),
           },
         ]
       : []),
@@ -775,5 +775,6 @@ export async function compose(
     },
   };
 }
+
 
 

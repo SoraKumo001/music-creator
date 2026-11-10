@@ -140,6 +140,84 @@ describe("texture", () => {
     // 音域は 60 前後から
     for (const n of seq) expect(n.pitch).toBeGreaterThanOrEqual(55);
   });
+
+  it("varies the arp riff per phrase when a seed is given", () => {
+    // 8小節ずっと同じコード = リフだけが音型を決める状況
+    const sameChord = mk([[0, "C"]], {
+      sections: [{ name: "A", bars: 8, comp: "block", energy: 3 }],
+    });
+    const secs = resolveSections(sameChord, 8, 4);
+    const ev = sameChord.chords.map(([start, symbol]) => ({ start, symbol }));
+    const a2: Arrangement = { sections: secs, totalBeats: 32, beatsPerBar: 4 };
+    const sig = (notes: Note[]) => {
+      const lo = Math.min(...notes.map((n) => n.pitch));
+      return Array.from({ length: 8 }, (_, b) =>
+        notes
+          .filter((n) => n.start >= b * 4 - 1e-6 && n.start < (b + 1) * 4 - 1e-6)
+          .map((n) => `${Math.round((n.start - b * 4) * 4)}:${n.pitch - lo}`)
+          .join(","),
+      );
+    };
+    // seedなし: 従来通り同一小節の反復 (末尾のエンディング小節は除く)
+    const plain = sig(generateArp(ev, a2)).filter((s) => s !== "");
+    expect(new Set(plain).size).toBe(1);
+    // seedあり: フレーズでリフが切り替わり、同一小節の連続反復が消える
+    const varied = sig(generateArp(ev, a2, { seed: 7 }));
+    expect(new Set(varied).size).toBeGreaterThan(2);
+    expect(varied.filter((s, i) => i > 0 && s === varied[i - 1]).length).toBe(0);
+  });
+
+  it("varies the seq16 ostinato per phrase when a seed is given", () => {
+    const sameChord = mk([[0, "C"]], {
+      sections: [{ name: "A", bars: 8, comp: "block", energy: 3 }],
+    });
+    const secs = resolveSections(sameChord, 8, 4);
+    const ev = sameChord.chords.map(([start, symbol]) => ({ start, symbol }));
+    const a2: Arrangement = { sections: secs, totalBeats: 32, beatsPerBar: 4 };
+    const bars = (notes: Note[]) =>
+      Array.from({ length: 8 }, (_, b) =>
+        notes
+          .filter((n) => n.start >= b * 4 - 1e-6 && n.start < (b + 1) * 4 - 1e-6)
+          .map((n) => `${Math.round((n.start - b * 4) * 4)}:${n.pitch}`)
+          .join(","),
+      );
+    expect(new Set(bars(generateSeq16(ev, a2)).filter((s) => s !== "")).size).toBe(1);
+    expect(new Set(bars(generateSeq16(ev, a2, { seed: 3 }))).size).toBeGreaterThan(2);
+  });
+
+  it("varies harmony intervals per phrase and rests occasionally", () => {
+    // 8小節・コード変化ありのメロディ (長い音にだけハモリが付く)
+    const harmPlan = mk([
+      [0, "C"], [8, "Am"], [16, "F"], [24, "G"],
+    ], { sections: [{ name: "A", bars: 8, comp: "block", energy: 3 }] });
+    const longMelody: Note[] = Array.from({ length: 8 }, (_, i) => ({
+      pitch: [72, 74, 76, 72, 71, 72, 76, 74][i]!,
+      start: i * 4,
+      duration: 2,
+      velocity: 100,
+    }));
+    const plain = generateHarmony(longMelody, harmPlan, 4);
+    const plainDeltas = new Set(
+      plain.map((h) => {
+        const m = longMelody.find((x) => x.start === h.start)!;
+        return m.pitch - h.pitch;
+      }),
+    );
+    // seedなしは3度下/6度下など従来の協和音程のみ (オクターブ下は使わない)
+    expect([...plainDeltas].every((d) => [2, 3, 4, 5, 8, 9].includes(d))).toBe(true);
+    expect([...plainDeltas]).not.toContain(12);
+    const varied = generateHarmony(longMelody, harmPlan, 4, { seed: 9 });
+    const deltas = new Set(
+      varied.map((h) => {
+        const m = longMelody.find((x) => x.start === h.start)!;
+        return m.pitch - h.pitch;
+      }),
+    );
+    expect(deltas.size).toBeGreaterThan(1);
+    // 適度に休む (全音には付かない) ため、seedなしと出力が変わる
+    expect(varied.length).toBeLessThan(plain.length);
+    expect(varied.map((n) => n.start)).not.toEqual(plain.map((n) => n.start));
+  });
 });
 
 describe("colorPlan", () => {
@@ -455,3 +533,5 @@ describe("texture does not affect harmony generation", () => {
     expect(bar1Starts.size).toBeGreaterThanOrEqual(9); // 8分8打 + 16分ギャロップ
   });
 });
+
+
