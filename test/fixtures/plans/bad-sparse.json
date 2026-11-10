@@ -1,0 +1,9 @@
+{
+  "name": "bad-sparse",
+  "bars": 8,
+  "plan": {
+    "bpm": 90,
+    "key": "C major",
+    "chords": [[0, "C"]]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "lofi-251",
+  "bars": 4,
+  "plan": {
+    "bpm": 80,
+    "key": "C major",
+    "chords": [[0, "Dm7"], [4, "G7"], [8, "Cmaj7"], [12, "Cmaj7"]]
+  }
+}

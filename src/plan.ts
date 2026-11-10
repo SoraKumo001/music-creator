@@ -1,11 +1,25 @@
 import { z } from "zod";
 
+/** 曲の終わり方 */
+export const ENDING_STYLES = ["button", "stop", "ring", "hits"] as const;
+export type EndingStyle = (typeof ENDING_STYLES)[number];
+
+/** 編成 */
+export const ENSEMBLES = ["band", "orchestra"] as const;
+export type Ensemble = (typeof ENSEMBLES)[number];
+
 /** 第1段階でLLMが出す「曲の設計」。音符は含まない */
 export const PlanSchema = z.object({
   title: z.string().default("Untitled"),
   bpm: z.number().min(30).max(300),
   timeSignature: z.tuple([z.number().int().min(1).max(12), z.number().int().min(1)]).default([4, 4]),
   key: z.string().default("C major"),
+  /** 省略時はテンポと調から自動で選ぶ (resolveEnding) */
+  ending: z.enum(ENDING_STYLES).nullish(),
+  /** ループ用の曲か (ユーザー設定。compose が上書きする) */
+  loop: z.boolean().default(false),
+  /** 編成 (ユーザー設定。compose が上書きする) */
+  ensemble: z.enum(ENSEMBLES).default("band"),
   chords: z.array(z.tuple([z.number().min(0), z.string().min(1)])).min(1),
   sections: z
     .array(
@@ -69,4 +83,16 @@ export function resolveSections(plan: Plan, bars: number, beatsPerBar: number): 
 
 export function sectionAt(sections: Section[], beat: number): Section {
   return sections.find((s) => beat >= s.start && beat < s.end) ?? sections[sections.length - 1]!;
+}
+
+/**
+ * 曲の終わり方を決める。LLM が指定していればそれを使い、
+ * なければテンポと調から選ぶ（速い曲はスタブ、遅い曲は余韻）。
+ */
+export function resolveEnding(plan: Plan): EndingStyle {
+  if (plan.ending) return plan.ending;
+  if (plan.bpm >= 125) return "hits";
+  if (plan.bpm <= 85) return "ring";
+  const minor = /min/i.test(plan.key) || /m$/i.test(plan.key.trim());
+  return minor ? "stop" : "button";
 }

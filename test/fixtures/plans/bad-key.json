@@ -1,0 +1,9 @@
+{
+  "name": "bad-key",
+  "bars": 8,
+  "plan": {
+    "bpm": 120,
+    "key": "C major",
+    "chords": [[0, "F#maj7"], [8, "G#m7"], [16, "A#m7"], [24, "D#m7"]]
+  }
+}

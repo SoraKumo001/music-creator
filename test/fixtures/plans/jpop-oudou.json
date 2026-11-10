@@ -1,0 +1,9 @@
+{
+  "name": "jpop-oudou",
+  "bars": 8,
+  "plan": {
+    "bpm": 120,
+    "key": "C major",
+    "chords": [[0, "Fmaj7"], [4, "G7"], [8, "Em7"], [12, "Am"], [16, "Fmaj7"], [20, "G7"], [24, "C"], [28, "C"]]
+  }
+}

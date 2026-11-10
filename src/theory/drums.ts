@@ -1,5 +1,5 @@
 import { GM_DRUMS } from "./index";
-import type { Section } from "../plan";
+import type { EndingStyle, Section } from "../plan";
 import type { Note } from "../score";
 
 /** 1小節(16分グリッド)のパターン。値は [ステップ(0-15), ドラム名, ベロシティ] */
@@ -39,7 +39,7 @@ const vel = (v: number, gain: number) => Math.max(1, Math.min(127, Math.round(v 
  *  - セクション頭にクラッシュ、セクション最終小節にフィル(次のセクションがある場合)
  *  - 曲の最終小節は1拍目のキック+クラッシュだけで締める
  */
-export function generateDrums(sections: Section[], beatsPerBar = 4): Note[] {
+export function generateDrums(sections: Section[], beatsPerBar = 4, ending: EndingStyle = "button", loop = false): Note[] {
   const notes: Note[] = [];
   const totalBars = sections.reduce((n, s) => n + s.bars, 0);
   sections.forEach((sec, si) => {
@@ -49,12 +49,45 @@ export function generateDrums(sections: Section[], beatsPerBar = 4): Note[] {
     for (let b = 0; b < sec.bars; b++) {
       const bar = sec.startBar + b;
       const base = bar * beatsPerBar;
-      if (bar === totalBars - 1 && totalBars > 1) {
-        notes.push({ pitch: GM_DRUMS.kick, start: base, duration: 0.25, velocity: vel(100, g) });
-        notes.push({ pitch: GM_DRUMS.crash, start: base, duration: 1, velocity: vel(95, g) });
+      if (!loop && bar === totalBars - 1 && totalBars > 1) {
+        // 終止は曲ごとに形を変える
+        const mid = Math.floor(beatsPerBar / 2);
+        const hit = (drum: keyof typeof GM_DRUMS, step: number, v: number) =>
+          notes.push({ pitch: GM_DRUMS[drum], start: base + step, duration: 0.25, velocity: vel(v, g) });
+        if (ending === "stop") {
+          hit("kick", 0, 110);
+          hit("crash", 0, 95);
+        } else if (ending === "ring") {
+          hit("kick", 0, 95);
+          hit("crash", 0, 90);
+        } else if (ending === "hits") {
+          for (let s = 0; s < beatsPerBar; s++) {
+            if (s === 0) {
+              hit("kick", s, 105);
+              hit("crash", s, 95);
+            } else if (s === beatsPerBar - 1) {
+              hit("kick", s, 100);
+              hit("crash", s, 85);
+            } else if (s % 2 === 1) {
+              hit("snare", s, 90);
+            } else {
+              hit("kick", s, 95);
+            }
+          }
+        } else {
+          hit("kick", 0, 105);
+          hit("crash", 0, 95);
+          hit("snare", mid, 90);
+          hit("kick", mid, 100);
+          hit("crash", mid, 80);
+        }
         continue;
       }
-      const isFill = b === sec.bars - 1 && sec.bars >= 2 && si < sections.length - 1;
+      // セクション境界の直前と、曲の最終小節の直前はフィル
+      const isPreEnding = !loop && bar === totalBars - 2 && totalBars >= 3;
+      // ループ用は最終小節の最後でフィルを打ち、次の周へ渡す
+      const isLoopFill = loop && bar === totalBars - 1;
+      const isFill = (b === sec.bars - 1 && sec.bars >= 2 && si < sections.length - 1) || isPreEnding || isLoopFill;
       for (const [step, drum, v] of pat) {
         const start = base + step / 4;
         if (start >= base + beatsPerBar) continue;

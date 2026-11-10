@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assemble, parseCompactNotes } from "../src/compose";
 import { scoreToMidi } from "../src/midi/toMidi";
 import { normalizeScore } from "../src/normalize";
-import { PlanSchema, resolveSections } from "../src/plan";
+import { PlanSchema, resolveEnding, resolveSections } from "../src/plan";
 import { melodyMessages } from "../src/prompt";
 import { ScoreSchema, type Note } from "../src/score";
 import { clampToRange, parseKey } from "../src/theory";
@@ -83,21 +83,22 @@ describe("sections", () => {
     // energy 3 は energy 1 より強い
     const avg = (xs: Note[]) => xs.reduce((a, x) => a + x.velocity, 0) / xs.length;
     expect(avg(inRange(n, 24, 28))).toBeGreaterThan(avg(inRange(n, 0, 8)));
-    // 最終小節は伸ばす(終止)
-    expect(new Set(inRange(n, 28, 32).map((x) => x.start)).size).toBe(1);
+    // 最終小節は 1 拍目と中間拍の 2 回で締める
+    expect(new Set(inRange(n, 28, 32).map((x) => x.start)).size).toBe(2);
   });
   it("bass is silent in 'none' sections and in range elsewhere", () => {
     const n = generateBass(events, arr);
     expect(inRange(n, 0, 8)).toHaveLength(0);
     expect(inRange(n, 8, 24).length).toBeGreaterThan(8);
     for (const x of n) { expect(x.pitch).toBeGreaterThanOrEqual(34); expect(x.pitch).toBeLessThanOrEqual(62); }
-    expect(inRange(n, 28, 32)).toHaveLength(1);
+    expect(inRange(n, 28, 32)).toHaveLength(2);
   });
   it("drums: none in intro, fill before section change, simple ending", () => {
     const n = generateDrums(sections, 4);
     expect(inRange(n, 0, 8)).toHaveLength(0);
     expect(inRange(n, 23, 24).filter((x) => x.pitch === 38 || x.pitch === 45 || x.pitch === 50)).toHaveLength(4);
-    expect(inRange(n, 28, 32)).toHaveLength(2);
+    // 終止は 1 拍目と中間拍の 2 回 (kick + crash / snare + kick + crash)
+    expect(inRange(n, 28, 32)).toHaveLength(5);
     expect(Math.max(...n.map((x) => x.start))).toBeLessThan(32);
   });
 });
@@ -129,6 +130,10 @@ describe("melody", () => {
     expect([65, 67]).toContain(p[1]!.pitch); // F# -> スケール内
     expect(p[2]!.pitch).toBeGreaterThanOrEqual(55);
   });
+  it("caps the final note so the ending is not one long sustain", () => {
+    const p = polishMelody(mk([[72, 28, 4]]), ctx);
+    expect(p[0]!.duration).toBeLessThanOrEqual(2);
+  });
 });
 
 describe("assemble / prompt", () => {
@@ -144,5 +149,59 @@ describe("assemble / prompt", () => {
     expect(text).toContain("bar 1 (beats 0-4): C@0");
     expect(text).toContain("bar 2 (beats 4-8): C@4 G@6");
     expect(text).toContain("bar 3 (beats 8-12): G@8");
+  });
+});
+
+describe("ending", () => {
+  const base = { sections, totalBeats: 32, beatsPerBar: 4 };
+  const finalStarts = (n: Note[]) => new Set(inRange(n, 28, 32).map((x) => x.start)).size;
+  it("derives an ending from tempo and key when unspecified", () => {
+    expect(resolveEnding(PlanSchema.parse({ bpm: 130, chords: [[0, "C"]] }))).toBe("hits");
+    expect(resolveEnding(PlanSchema.parse({ bpm: 80, chords: [[0, "C"]] }))).toBe("ring");
+    expect(resolveEnding(PlanSchema.parse({ bpm: 100, key: "A minor", chords: [[0, "C"]] }))).toBe("stop");
+    expect(resolveEnding(PlanSchema.parse({ bpm: 100, chords: [[0, "C"]] }))).toBe("button");
+    expect(resolveEnding(PlanSchema.parse({ bpm: 100, ending: "ring", chords: [[0, "C"]] }))).toBe("ring");
+  });
+
+  it("plays a different final-bar pattern for each style", () => {
+    const starts = (ending: "button" | "stop" | "ring" | "hits") => finalStarts(generateComp(events, { ...base, ending }));
+    expect(starts("button")).toBe(2);
+    expect(starts("stop")).toBe(1);
+    expect(starts("ring")).toBe(1);
+    expect(starts("hits")).toBe(4);
+  });
+
+  it("uses the ending style for drums", () => {
+    const finalCount = (ending: "button" | "stop" | "ring" | "hits") =>
+      inRange(generateDrums(sections, 4, ending), 28, 32).length;
+    expect(finalCount("stop")).toBe(2);
+    expect(finalCount("ring")).toBe(2);
+    expect(finalCount("button")).toBe(5);
+    expect(finalCount("hits")).toBe(6);
+  });
+});
+
+describe("loop mode", () => {
+  it("keeps the section groove and fills into the loop point", () => {
+    const loopPlan = { ...plan, loop: true };
+    const loopSections = resolveSections(loopPlan, BARS, 4);
+    const score = assemble(loopPlan, loopSections, [{ pitch: 72, start: 0, duration: 1, velocity: 90 }], BARS);
+    const chords = score.tracks.find((t) => t.name === "Chords")!.notes;
+    // 最終小節は終止ではなくセクションの comp (strum) のまま
+    expect(new Set(inRange(chords, 28, 32).map((n) => n.start)).size).toBe(4);
+    const drums = score.tracks.find((t) => t.name === "Drums")!.notes;
+    // 最後の 1 拍にフィルが入り、次の周へ渡す
+    expect(inRange(drums, 31, 32).length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("orchestra mode", () => {
+  it("builds an orchestral score when requested", () => {
+    const orch = { ...plan, ensemble: "orchestra" as const };
+    const orchSections = resolveSections(orch, BARS, 4);
+    const score = assemble(orch, orchSections, [{ pitch: 72, start: 0, duration: 1, velocity: 90 }], BARS);
+    expect(score.tracks.length).toBeGreaterThan(4);
+    expect(score.tracks.map((t) => t.name)).toContain("Violin I");
+    expect(String.fromCharCode(...scoreToMidi(normalizeScore(score, BARS)).slice(0, 4))).toBe("MThd");
   });
 });

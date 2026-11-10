@@ -9,6 +9,7 @@ const QUALITIES: Record<string, number[]> = {
   "7": [4, 10, 0, 7],
   maj7: [4, 11, 0, 7],
   m7: [3, 10, 0, 7],
+  mM7: [3, 11, 0, 7],
   m7b5: [3, 10, 0, 6],
   dim: [3, 0, 6],
   dim7: [3, 9, 0, 6],
@@ -27,6 +28,7 @@ const QUALITIES: Record<string, number[]> = {
 const ALIASES: Record<string, string> = {
   M7: "maj7", major7: "maj7", "△7": "maj7", min: "m", min7: "m7", "-7": "m7", "-": "m", dom7: "7",
   "ø": "m7b5", "ø7": "m7b5", "°": "dim", "°7": "dim7", M9: "maj9", min9: "m9", maj: "",
+  mMaj7: "mM7", minMaj7: "mM7",
 };
 
 export type Chord = { root: number; bass: number; tones: number[]; symbol: string };

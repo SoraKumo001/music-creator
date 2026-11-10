@@ -87,6 +87,7 @@ export function polishMelody(notes: Note[], ctx: MelodyContext): Note[] {
   }
   const ns = [...byStart.values()].sort((a, b) => a.start - b.start);
 
+  const lastIndex = ns.length - 1;
   return ns.map((n, i) => {
     let pitch = n.pitch;
     while (pitch < 55) pitch += 12;
@@ -98,6 +99,8 @@ export function polishMelody(notes: Note[], ctx: MelodyContext): Note[] {
     }
     const next = ns[i + 1];
     const maxDur = next ? next.start - n.start : total - n.start;
-    return { ...n, pitch, duration: Math.max(0.0625, Math.min(n.duration, maxDur)) };
+    // 最後の音は伸ばし切らず、余韻を残して終わる
+    const cap = i === lastIndex ? Math.min(maxDur, ctx.beatsPerBar / 2) : maxDur;
+    return { ...n, pitch, duration: Math.max(0.0625, Math.min(n.duration, cap)) };
   });
 }

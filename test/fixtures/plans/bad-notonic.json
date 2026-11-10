@@ -1,0 +1,9 @@
+{
+  "name": "bad-notonic",
+  "bars": 8,
+  "plan": {
+    "bpm": 100,
+    "key": "C major",
+    "chords": [[0, "Dm7"], [8, "G7"], [16, "Am7"], [24, "F"]]
+  }
+}

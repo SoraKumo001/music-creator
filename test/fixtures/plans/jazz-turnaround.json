@@ -1,0 +1,9 @@
+{
+  "name": "jazz-turnaround",
+  "bars": 8,
+  "plan": {
+    "bpm": 96,
+    "key": "C major",
+    "chords": [[0, "Cmaj7"], [4, "Am7"], [8, "Dm7"], [12, "G7"], [16, "Cmaj7"], [20, "Am7"], [24, "G7"], [28, "C"]]
+  }
+}

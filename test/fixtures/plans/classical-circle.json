@@ -1,0 +1,9 @@
+{
+  "name": "classical-circle",
+  "bars": 8,
+  "plan": {
+    "bpm": 88,
+    "key": "C major",
+    "chords": [[0, "C"], [4, "F"], [8, "Bdim"], [12, "Em"], [16, "Am"], [20, "Dm"], [24, "G"], [28, "C"]]
+  }
+}

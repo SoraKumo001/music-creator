@@ -19,7 +19,7 @@ export const ScoreSchema = z.object({
   bpm: z.number().min(30).max(300),
   timeSignature: z.tuple([z.number().int().min(1), z.number().int()]).default([4, 4]),
   key: z.string().default("C major"),
-  tracks: z.array(TrackSchema).min(1).max(12),
+  tracks: z.array(TrackSchema).min(1).max(32),
 });
 
 export type Note = z.infer<typeof NoteSchema>;

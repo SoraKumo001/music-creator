@@ -16,6 +16,9 @@
   .sub { color:var(--muted); margin:0 0 24px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
   label { display:block; font-size:.875rem; color:var(--muted); margin-bottom:4px; }
+  input[type="range"] { width:100%; accent-color:var(--accent); }
+  input[type="checkbox"] { width:auto; accent-color:var(--accent); }
+  output { color:var(--muted); font-size:.8125rem; }
   textarea, select { width:100%; font:inherit; color:inherit; background:transparent; border:1px solid var(--line); border-radius:8px; padding:10px; }
   textarea { min-height:96px; resize:vertical; }
   .row { display:flex; gap:12px; align-items:end; margin-top:12px; flex-wrap:wrap; }
@@ -55,6 +58,17 @@
           <option value="16">16小節</option>
         </select>
       </div>
+      <div>
+        <label for="ensemble">編成</label>
+        <select id="ensemble">
+          <option value="band" selected>バンド</option>
+          <option value="orchestra">オーケストラ</option>
+        </select>
+      </div>
+      <div style="flex:0 0 auto">
+        <label for="loop">ループ用</label>
+        <input id="loop" type="checkbox" title="最後を終止させず、次の周へ自然につなげます">
+      </div>
       <button id="go" type="submit">作曲する</button>
     </div>
   </form>
@@ -72,6 +86,12 @@
     <div class="row" style="margin-top:0">
       <button id="play" type="button">▶ 試聴</button>
       <button id="dl" class="secondary" type="button">MIDIをダウンロード</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label for="volume">音量 <output id="volout">85%</output></label>
+        <input id="volume" type="range" min="0" max="100" step="1" value="85">
+      </div>
     </div>
   </section>
 </main>
@@ -105,7 +125,7 @@ $("form").addEventListener("submit", async (e) => {
   try {
     const res = await fetch("/api/compose", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: $("prompt").value.trim(), bars: Number($("bars").value) }),
+      body: JSON.stringify({ prompt: $("prompt").value.trim(), bars: Number($("bars").value), loop: $("loop").checked, ensemble: $("ensemble").value }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "入力が正しくありません");
@@ -171,73 +191,146 @@ function drawRoll(score) {
 addEventListener("resize", () => current && drawRoll(current.score));
 
 // ---- ブラウザ試聴 (Tone.js) ----
-let playing = false, raf = 0, disposables = [];
+let playing = false, raf = 0, disposables = [], busNodes = [];
 const midiHz = (p) => 440 * Math.pow(2, (p - 69) / 12);
+/** 低ベロシティを底上げする (線形だと小さい音が埋もれる) */
+const vel = (n) => Math.sqrt(Math.max(0, Math.min(1, n.velocity / 127)));
+/** マスター音量: 0-100% を 0-1.8 のゲインへ (知覚に合わせて 2 乗) */
+const gainFor = (pct) => 1.8 * Math.pow(pct / 100, 2);
 
-function buildVoice(track) {
-  const p = track.program;
-  if (track.channel === 9) return null;
-  if (p >= 32 && p <= 39) { // ベース
-    const s = new Tone.MonoSynth({ oscillator: { type: "triangle" }, envelope: { attack: .01, decay: .2, sustain: .6, release: .2 }, volume: -6 }).toDestination();
-    return { play: (n, t, d) => s.triggerAttackRelease(midiHz(n.pitch), d, t, n.velocity / 127), nodes: [s] };
-  }
-  const type = p >= 40 && p <= 55 ? "sawtooth" : p >= 80 && p <= 95 ? "square" : "triangle";
-  const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type }, envelope: { attack: .02, decay: .2, sustain: .4, release: .5 }, volume: -12 }).toDestination();
-  return { play: (n, t, d) => s.triggerAttackRelease(midiHz(n.pitch), d, t, n.velocity / 127), nodes: [s] };
+let volumePct = 85;
+try {
+  const saved = Number(localStorage.getItem("mc-volume"));
+  if (Number.isFinite(saved) && saved >= 0 && saved <= 100) volumePct = saved;
+} catch {}
+
+/** マスターバス: 音量 → コンプレッサー → リミッター → 出力 */
+function createBus() {
+  const gain = new Tone.Gain(gainFor(volumePct));
+  const comp = new Tone.Compressor({ threshold: -16, ratio: 3, attack: 0.002, release: 0.25 });
+  const limiter = new Tone.Limiter(-1.5);
+  gain.chain(comp, limiter, Tone.Destination);
+  busNodes = [gain, comp, limiter];
+  return gain;
 }
 
-function buildDrums() {
-  const kick = new Tone.MembraneSynth({ volume: -4 }).toDestination();
-  const snare = new Tone.NoiseSynth({ envelope: { attack: .001, decay: .15, sustain: 0 }, volume: -12 }).toDestination();
-  const hat = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: .001, decay: .04, sustain: 0 }, volume: -22 }).toDestination();
+function buildVoice(program, dest, volumeDb) {
+  if (program >= 32 && program <= 39) { // ベース
+    const s = new Tone.MonoSynth({ oscillator: { type: "triangle" }, envelope: { attack: .01, decay: .2, sustain: .6, release: .2 }, volume: volumeDb }).connect(dest);
+    return { play: (n, t, d) => s.triggerAttackRelease(midiHz(n.pitch), d, t, vel(n)), nodes: [s] };
+  }
+  const type = program >= 40 && program <= 55 ? "sawtooth" : program >= 80 && program <= 95 ? "square" : "triangle";
+  const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type }, envelope: { attack: .02, decay: .2, sustain: .55, release: .5 }, volume: volumeDb }).connect(dest);
+  s.maxPolyphony = 8;
+  return { play: (n, t, d) => s.triggerAttackRelease(midiHz(n.pitch), d, t, vel(n)), nodes: [s] };
+}
+
+function buildDrums(dest) {
+  const kick = new Tone.MembraneSynth({ volume: -2 }).connect(dest);
+  const snare = new Tone.NoiseSynth({ envelope: { attack: .001, decay: .15, sustain: 0 }, volume: -8 }).connect(dest);
+  const hat = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: .001, decay: .04, sustain: 0 }, volume: -16 }).connect(dest);
+  const crash = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: .001, decay: .35, sustain: 0 }, volume: -16 }).connect(dest);
   return {
     play: (n, t) => {
-      const v = n.velocity / 127;
+      const v = vel(n);
       if (n.pitch === 35 || n.pitch === 36) kick.triggerAttackRelease("C1", .15, t, v);
       else if (n.pitch === 38 || n.pitch === 40 || n.pitch === 39) snare.triggerAttackRelease(.1, t, v);
+      else if ([49, 51, 52, 55, 57].includes(n.pitch)) crash.triggerAttackRelease(.35, t, v);
       else if (n.pitch >= 41 && n.pitch <= 50 && ![42, 44, 46].includes(n.pitch)) kick.triggerAttackRelease(midiHz(n.pitch - 12), .15, t, v * .7);
       else hat.triggerAttackRelease(.04, t, v);
     },
-    nodes: [kick, snare, hat],
+    nodes: [kick, snare, hat, crash],
   };
 }
 
-function stop() {
-  playing = false; cancelAnimationFrame(raf);
-  Tone.Transport.stop(); Tone.Transport.cancel();
-  disposables.forEach((n) => n.dispose()); disposables = [];
-  const h = $("head"); h.getContext("2d").clearRect(0, 0, h.width, h.height);
-  $("play").textContent = "▶ 試聴";
-}
-
-async function play() {
-  if (typeof Tone === "undefined") { $("status").className = "err"; $("status").textContent = "試聴用ライブラリを読み込めませんでした"; return; }
-  await Tone.start();
-  const { score } = current, spb = 60 / score.bpm;
-  const total = Math.max(...score.tracks.flatMap((t) => t.notes.map((n) => n.start + n.duration))) * spb;
-  for (const t of score.tracks) {
-    const v = t.channel === 9 ? buildDrums() : buildVoice(t);
-    disposables.push(...v.nodes);
-    for (const n of t.notes) Tone.Transport.schedule((time) => v.play(n, time, n.duration * spb), n.start * spb);
-  }
-  Tone.Transport.schedule(() => stop(), total + 1);
-  Tone.Transport.start("+0.1");
-  playing = true; $("play").textContent = "■ 停止";
+/** 再生ヘッドのアニメーション (SpessaSynth / Tone.js 共通) */
+function animateHead(getTime, getDuration) {
   const h = $("head"), dpr = devicePixelRatio || 1;
   h.width = h.clientWidth * dpr; h.height = h.clientHeight * dpr;
   const g = h.getContext("2d");
   const frame = () => {
     if (!playing) return;
-    const x = Math.min(1, Tone.Transport.seconds / total) * h.width;
+    const d = getDuration(), t = getTime();
+    const x = d > 0 ? Math.min(1, t / d) * h.width : 0;
     g.clearRect(0, 0, h.width, h.height);
     g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--fg");
     g.fillRect(x, 0, 2 * dpr, h.height);
+    if (d > 0 && t >= d - 0.05) { stop(); return; }
     raf = requestAnimationFrame(frame);
   };
   frame();
 }
 
+function stop() {
+  playing = false; cancelAnimationFrame(raf);
+  if (window.SpessaPlayer) { try { window.SpessaPlayer.stop(); } catch {} }
+  if (typeof Tone !== "undefined") { Tone.Transport.stop(); Tone.Transport.cancel(); }
+  disposables.forEach((n) => n.dispose()); disposables = [];
+  busNodes.forEach((n) => n.dispose()); busNodes = [];
+  const h = $("head"); h.getContext("2d").clearRect(0, 0, h.width, h.height);
+  $("play").textContent = "▶ 試聴";
+}
+
+async function play() {
+  const status = $("status");
+  // 高音質: SpessaSynth + General MIDI サウンドフォント (CDN から遅延ロード)
+  if (window.SpessaPlayer) {
+    try {
+      status.className = ""; status.textContent = "音源を準備しています… (初回は少し時間がかかります)";
+      await window.SpessaPlayer.play(current.midi, volumePct);
+      status.textContent = "";
+      playing = true; $("play").textContent = "■ 停止";
+      animateHead(() => window.SpessaPlayer.progress(), () => window.SpessaPlayer.duration());
+      return;
+    } catch (e) {
+      console.warn("SpessaSynth の再生に失敗したため Tone.js にフォールバックします", e);
+      status.textContent = "";
+    }
+  }
+  // フォールバック: Tone.js による簡易シンセ
+  if (typeof Tone === "undefined") { status.className = "err"; status.textContent = "試聴用ライブラリを読み込めませんでした"; return; }
+  await Tone.start();
+  const bus = createBus();
+  const { score } = current, spb = 60 / score.bpm;
+  const total = Math.max(...score.tracks.flatMap((t) => t.notes.map((n) => n.start + n.duration))) * spb;
+  // 同音色 (ディヴィジ) のパートは 1 つのシンセにまとめて発音数を抑える
+  const byProgram = new Map();
+  for (const t of score.tracks) {
+    if (t.channel === 9) continue;
+    const list = byProgram.get(t.program);
+    if (list) list.push(...t.notes);
+    else byProgram.set(t.program, [...t.notes]);
+  }
+  // 音色数が多いほど 1 音色あたりを下げ、合計がコンプレッサーを潰さないようにする
+  const volumeDb = -6 - 10 * Math.log10(Math.max(1, byProgram.size / 4));
+  for (const [program, notes] of byProgram) {
+    const v = buildVoice(program, bus, volumeDb);
+    disposables.push(...v.nodes);
+    for (const n of notes) Tone.Transport.schedule((time) => v.play(n, time, n.duration * spb), n.start * spb);
+  }
+  let drumVoice = null;
+  for (const t of score.tracks) {
+    if (t.channel !== 9) continue;
+    if (!drumVoice) { drumVoice = buildDrums(bus); disposables.push(...drumVoice.nodes); }
+    for (const n of t.notes) Tone.Transport.schedule((time) => drumVoice.play(n, time), n.start * spb);
+  }
+  Tone.Transport.schedule(() => stop(), total + 1);
+  Tone.Transport.start("+0.1");
+  playing = true; $("play").textContent = "■ 停止";
+  animateHead(() => Tone.Transport.seconds, () => total);
+}
+
 $("play").onclick = () => (playing ? stop() : play());
+
+$("volume").value = String(volumePct);
+$("volout").textContent = `${volumePct}%`;
+$("volume").addEventListener("input", (e) => {
+  volumePct = Number(e.target.value);
+  $("volout").textContent = `${volumePct}%`;
+  try { localStorage.setItem("mc-volume", String(volumePct)); } catch {}
+  if (window.SpessaPlayer) window.SpessaPlayer.setVolume(volumePct);
+  if (busNodes[0]) busNodes[0].gain.rampTo(gainFor(volumePct), 0.08);
+});
 
 $("dl").onclick = () => {
   const bin = atob(current.midi), bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
@@ -245,6 +338,78 @@ $("dl").onclick = () => {
   a.href = URL.createObjectURL(new Blob([bytes], { type: "audio/midi" }));
   a.download = (current.score.title || "song").replace(/[\\/:*?"<>|]/g, "_") + ".mid";
   a.click(); URL.revokeObjectURL(a.href);
+};
+</script>
+<script type="module">
+/*
+ * SpessaSynth による高音質試聴。
+ * - ライブラリは esm.sh、サウンドフォントは jsDelivr から初回再生時に遅延ロード
+ * - ワークレットは CDN (v4.4.7)。CDN が使えない場合は public/ の同一ファイルを使う
+ * - 失敗した場合は従来の Tone.js 再生にフォールバックする
+ */
+const SPESSA_LIB = "https://esm.sh/spessasynth_lib@4.4.7";
+const SPESSA_WORKLET = "https://cdn.jsdelivr.net/npm/spessasynth_lib@4.4.7/dist/spessasynth_processor.min.js";
+const SPESSA_SOUNDFONT = "https://cdn.jsdelivr.net/gh/spessasus/SpessaSynth@17fb0847ed52c3f1b010447bd87a3e0877bbdcc8/soundfonts/GeneralUserGS.sf3";
+const spessaGain = (pct) => 1.2 * Math.pow(pct / 100, 2);
+
+let enginePromise = null;
+let engine = null;
+
+async function loadEngine() {
+  if (engine) return engine;
+  if (!enginePromise) {
+    enginePromise = (async () => {
+      const { WorkletSynthesizer, Sequencer } = await import(SPESSA_LIB);
+      const ctx = new AudioContext();
+      // ワークレットは CDN から。CDN が使えない場合はローカル (public/) を使う
+      try {
+        await ctx.audioWorklet.addModule(SPESSA_WORKLET);
+      } catch {
+        await ctx.audioWorklet.addModule("./spessasynth_processor.min.js");
+      }
+      const synth = new WorkletSynthesizer(ctx);
+      const master = ctx.createGain();
+      master.gain.value = spessaGain(85);
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -1.5;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.001;
+      limiter.release.value = 0.1;
+      synth.connect(master);
+      master.connect(limiter);
+      limiter.connect(ctx.destination);
+      const soundfont = await (await fetch(SPESSA_SOUNDFONT)).arrayBuffer();
+      await synth.soundBankManager.addSoundBank(soundfont, "main");
+      await synth.isReady;
+      const seq = new Sequencer(synth);
+      engine = { ctx, synth, master, seq };
+      return engine;
+    })().catch((e) => { enginePromise = null; throw e; });
+  }
+  return enginePromise;
+}
+
+window.SpessaPlayer = {
+  async play(midiBase64, volumePct) {
+    const { ctx, master, seq } = await loadEngine();
+    await ctx.resume();
+    master.gain.value = spessaGain(volumePct);
+    const bin = atob(midiBase64);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    try { seq.pause(); } catch {}
+    seq.loadNewSongList([{ binary: bytes.buffer }]);
+    seq.play();
+  },
+  stop() {
+    if (!engine) return;
+    try { engine.seq.pause(); engine.seq.currentTime = 0; } catch {}
+  },
+  setVolume(pct) {
+    if (engine) engine.master.gain.value = spessaGain(pct);
+  },
+  progress() { return engine ? engine.seq.currentHighResolutionTime : 0; },
+  duration() { return engine ? engine.seq.duration : 0; },
 };
 </script>
 </body>

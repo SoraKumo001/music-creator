@@ -2,13 +2,19 @@ import { z } from "zod";
 import { chat, type ChatMessage, type LlmConfig, type Usage } from "./llm/provider";
 import { scoreToMidi } from "./midi/toMidi";
 import { normalizeScore } from "./normalize";
-import { PlanSchema, resolveSections, type Plan, type Section } from "./plan";
+import { PlanSchema, resolveEnding, resolveSections, type Ensemble, type Plan, type Section } from "./plan";
 import { melodyMessages, planMessages } from "./prompt";
 import { NoteSchema, ScoreSchema, type Note, type Score } from "./score";
 import { generateBass, generateComp, type Arrangement, type ChordEvent } from "./theory/accompaniment";
 import { generateDrums } from "./theory/drums";
 import { parseChord } from "./theory/harmony";
 import { polishMelody, scoreMelody, type MelodyContext, type MelodyScore } from "./theory/melody";
+import { repairPlan } from "./theory/repair";
+import { analyzeChord } from "./theory/roman";
+import { parseKeyName } from "./theory/key";
+import { generateOrchestra } from "./theory/orchestra";
+import { reharmonizePlan, type ReharmSuggestion } from "./theory/reharmonize";
+import { validatePlan, type Issue } from "./theory/validate";
 
 function extractJson(text: string): unknown {
   const t = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
@@ -29,13 +35,17 @@ export function parseCompactNotes(raw: unknown): Note[] {
 /** 設計 + メロディから Score を組み立てる(伴奏・ベース・ドラムはルール層) */
 export function assemble(plan: Plan, sections: Section[], melody: Note[], bars: number): Score {
   const beatsPerBar = (plan.timeSignature[0] * 4) / plan.timeSignature[1];
+  if (plan.ensemble === "orchestra") {
+    const tracks = generateOrchestra(plan, sections, melody, bars, beatsPerBar);
+    return ScoreSchema.parse({ title: plan.title, bpm: plan.bpm, timeSignature: plan.timeSignature, key: plan.key, tracks });
+  }
   const events: ChordEvent[] = plan.chords.map(([start, symbol]) => ({ start, symbol }));
-  const a: Arrangement = { sections, totalBeats: bars * beatsPerBar, beatsPerBar };
+  const a: Arrangement = { sections, totalBeats: bars * beatsPerBar, beatsPerBar, ending: resolveEnding(plan), loop: plan.loop };
   const tracks = [
     { name: plan.melodyName, program: plan.melodyProgram, channel: 0, notes: melody },
     { name: "Chords", program: plan.compProgram, channel: 1, notes: generateComp(events, a) },
     { name: "Bass", program: plan.bassProgram, channel: 2, notes: generateBass(events, a) },
-    { name: "Drums", program: 0, channel: 9, notes: generateDrums(sections, beatsPerBar) },
+    { name: "Drums", program: 0, channel: 9, notes: generateDrums(sections, beatsPerBar, a.ending, a.loop) },
   ].filter((t) => t.notes.length > 0);
   return ScoreSchema.parse({ title: plan.title, bpm: plan.bpm, timeSignature: plan.timeSignature, key: plan.key, tracks });
 }
@@ -46,14 +56,25 @@ export type ComposeStats = {
   melodyMs: number;
   planAttempts: number;
   outputTokens: number;
+  repairs: number;
   candidates: { score: number; notes: number }[];
   chosen: number;
   chosenParts: MelodyScore["parts"];
 };
 export type SectionInfo = { name: string; startBar: number; bars: number };
-export type ComposeResult = { score: Score; midi: Uint8Array; sections: SectionInfo[]; attempts: number; stats: ComposeStats };
+export type HarmonyLine = { beat: number; symbol: string; numeral: string; fn: "T" | "S" | "D" };
+export type ComposeResult = {
+  score: Score;
+  midi: Uint8Array;
+  sections: SectionInfo[];
+  attempts: number;
+  stats: ComposeStats;
+  harmony: HarmonyLine[];
+  issues: Issue[];
+  suggestions: ReharmSuggestion[];
+};
 
-export type ComposeOptions = { candidates?: number; maxAttempts?: number };
+export type ComposeOptions = { candidates?: number; maxAttempts?: number; loop?: boolean; ensemble?: Ensemble };
 
 const TEMPS = [0.7, 0.9, 1.0, 0.8, 1.1];
 
@@ -61,13 +82,15 @@ const TEMPS = [0.7, 0.9, 1.0, 0.8, 1.1];
 export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: ComposeOptions = {}): Promise<ComposeResult> {
   const nCand = Math.max(1, Math.min(5, opts.candidates ?? 3));
   const maxAttempts = opts.maxAttempts ?? 3;
+  const loop = opts.loop ?? false;
+  const ensemble = opts.ensemble ?? "band";
   cfg = { ...cfg, sessionId: cfg.sessionId ?? "mc-" + crypto.randomUUID() };
   const t0 = Date.now();
   let outputTokens = 0;
   const count = (u?: Usage) => { outputTokens += u?.completion_tokens ?? 0; };
 
   // ---- (1) 設計 ----
-  const messages: ChatMessage[] = planMessages(prompt, bars);
+  const messages: ChatMessage[] = planMessages(prompt, bars, loop, ensemble);
   let plan: Plan | undefined;
   let planAttempts = 0;
   let lastError = "";
@@ -76,19 +99,33 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
     const res = await chat(cfg, messages);
     count(res.usage);
     try {
-      const p = PlanSchema.parse(extractJson(res.content));
+      const p = { ...PlanSchema.parse(extractJson(res.content)), loop, ensemble };
       for (const [, sym] of p.chords) parseChord(sym); // 解釈できないコードは作り直させる
+      const errors = validatePlan(p, bars).filter((i) => i.severity === "error");
+      if (errors.length > 0) throw new Error(errors.map((i) => `${i.code}: ${i.message}`).join(" / "));
       plan = p;
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
       messages.push(
         { role: "assistant", content: res.content },
-        { role: "user", content: `The JSON was invalid: ${lastError.slice(0, 800)}\nReturn the corrected full JSON only.` },
+        { role: "user", content: `The plan was invalid: ${lastError.slice(0, 800)}\nReturn the corrected full JSON only.` },
       );
     }
   }
   if (!plan) throw new Error(`Failed to design the song after ${maxAttempts} attempts: ${lastError}`);
   const planMs = Date.now() - t0;
+
+  // ---- (1.5) 和声の検証・補正 ----
+  const repaired = repairPlan(plan, bars);
+  plan = repaired.plan;
+
+  const keyCtx = parseKeyName(plan.key);
+  const harmony: HarmonyLine[] = plan.chords.map(([beat, symbol]) => {
+    const a = analyzeChord(symbol, keyCtx);
+    return { beat, symbol, numeral: a.numeral, fn: a.fn };
+  });
+  const issues = validatePlan(plan, bars);
+  const suggestions = reharmonizePlan(plan);
 
   const beatsPerBar = (plan.timeSignature[0] * 4) / plan.timeSignature[1];
   const sections = resolveSections(plan, bars, beatsPerBar);
@@ -123,8 +160,11 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
     midi: scoreToMidi(score),
     sections: sections.map(({ name, startBar, bars: b }) => ({ name, startBar, bars: b })),
     attempts: planAttempts,
+    harmony,
+    issues,
+    suggestions,
     stats: {
-      ms: Date.now() - t0, planMs, melodyMs, planAttempts, outputTokens,
+      ms: Date.now() - t0, planMs, melodyMs, planAttempts, outputTokens, repairs: repaired.fixes.length,
       candidates: cands.map((c) => ({ score: c.score.total, notes: c.notes.length })),
       chosen,
       chosenParts: cands[chosen]!.score.parts,
