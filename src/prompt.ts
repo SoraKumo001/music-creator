@@ -17,25 +17,71 @@ import { BASS_STYLES, COMP_STYLES } from "./theory/accompaniment";
 import { DRUM_PATTERN_NAMES } from "./theory/drums";
 import { realizeNumerals } from "./theory/roman";
 import { hashSeed, mulberry32, sampleSeeded } from "./util/random";
+import { isCalmPrompt } from "./knowledge/corpus";
 
 const list = (a: readonly string[]) => a.map((n) => `"${n}"`).join(", ");
 
-/** ジャンルに合う進行カード。該当なしならseedで汎用カードからサンプル (毎回同じ4枚にしない) */
+/** ジャンルに合う進行カード。seedで選択と提示順をローテーションする (毎回同じカード・同じ並びにしない) */
 function progressionCards(
   userPrompt: string,
   seed?: number,
 ): ProgressionCard[] {
-  const ids = new Set<string>();
+  const ids: string[] = [];
   for (const genre of pickGenreCards(userPrompt))
-    for (const id of genre.progressions ?? []) ids.add(id);
-  const chosen = [...ids].flatMap((id) => {
-    const card = progressionById(id);
-    return card ? [card] : [];
-  });
-  if (chosen.length > 0) return chosen.slice(0, 5);
+    for (const id of genre.progressions ?? []) if (!ids.includes(id)) ids.push(id);
+  if (ids.length > 0) {
+    // 同じプロンプトでも seed ごとに「どのカードを出すか・並び順」を変える
+    const rand = mulberry32((seed ?? hashSeed(userPrompt)) ^ 0x3c6ef372);
+    return sampleSeeded(ids, Math.min(4, ids.length), rand).flatMap((id) => {
+      const card = progressionById(id);
+      return card ? [card] : [];
+    });
+  }
   // フォールバック: 全カードから決定的サンプル。seed未指定でもpromptハッシュで揺らす
   const rand = mulberry32(seed ?? hashSeed(userPrompt));
   return sampleSeeded(PROGRESSIONS, 5, rand);
+}
+
+/** 世代ごとにキー・テンポ・進行の選択をずらす指示 (同じプロンプトの反復で同一化しない) */
+const TONICS = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+
+/** ジャンルカードの "Tempo 70-90 BPM" から実際のテンポ帯を取り出す */
+function tempoRangeOf(genreCards: { card: string }[], fallbackCards: ProgressionCard[]): [number, number] {
+  const ranges = genreCards
+    .map((c) => /Tempo\s+(\d{2,3})\s*[-–]\s*(\d{2,3})\s*BPM/i.exec(c.card))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => [Number(m[1]), Number(m[2])] as [number, number]);
+  if (ranges.length > 0) {
+    return [Math.max(...ranges.map((r) => r[0])), Math.min(...ranges.map((r) => r[1]))];
+  }
+  if (fallbackCards.length > 0) {
+    return [
+      Math.min(...fallbackCards.map((c) => c.tempo[0])),
+      Math.max(...fallbackCards.map((c) => c.tempo[1])),
+    ];
+  }
+  return [90, 145];
+}
+
+function variationBlock(seed: number, cards: ProgressionCard[], genreCards: { card: string }[], userPrompt: string): string {
+  const rand = mulberry32((seed ^ 0x51ed270b) >>> 0);
+  const tonic = TONICS[Math.floor(rand() * TONICS.length)]!;
+  const [lo, hi] = tempoRangeOf(genreCards, cards);
+  const span = Math.max(0, hi - lo);
+  // 静かな曲は低め、明るい/元気な曲は高めへ寄せつつ、seedで毎回ずらす
+  const p = userPrompt.toLowerCase();
+  const bright = /明る|楽しい|元気|にぎやか|ポップ|アニメ|アイドル|青春|happy|bright|upbeat|energetic/.test(p);
+  const calm = isCalmPrompt(userPrompt);
+  const center = calm
+    ? lo + rand() * span * 0.45
+    : bright
+      ? lo + span * 0.5 + rand() * span * 0.5
+      : lo + rand() * span;
+  const bpm = Math.max(40, Math.min(200, Math.round(center)));
+  return `\n\nVariation for this generation (follow unless the request clearly contradicts it):
+- Tonic pitch class: ${tonic} (choose major or minor as the mood requires).
+- Tempo: about ${bpm} BPM.
+- For the A section, do not pick the most obvious default skeleton of this style: avoid I–V–vi–IV, Imaj7–vi7–ii7–V7, IV–V–iii–vi and vi–IV–I–V unless the request names them. Choose a less common skeleton from the vocabulary above, and a different one (or a clear variation) for the B section.`;
 }
 
 function progressionLine(card: ProgressionCard): string {
@@ -45,8 +91,7 @@ function progressionLine(card: ProgressionCard): string {
   return `- ${card.name} [${card.id}] ${card.numerals.join("–")} (${card.bars} bars, ${rhythm}). Example in ${exampleKey}: ${example}. Feel: ${card.feel}. Use: ${card.usage}`;
 }
 
-function progressionBlock(userPrompt: string, seed?: number): string {
-  const cards = progressionCards(userPrompt, seed);
+function progressionBlock(cards: ProgressionCard[]): string {
   return `\n\nProgression vocabulary — choose ONE as the skeleton for the A section, and a different one (or a variation) for the B section:
 ${cards.map(progressionLine).join("\n")}
 
@@ -121,6 +166,7 @@ export function planMessages(
   ensemble: Ensemble = "band",
   opts: PlanPromptOptions = {},
 ): ChatMessage[] {
+  const progc = progressionCards(userPrompt, opts.seed);
   const cards = pickGenreCards(userPrompt);
   const knowledge = cards.length
     ? "\n\nGenre guidance:\n" +
@@ -148,7 +194,8 @@ The arrangement will be ORCHESTRAL (strings, woodwinds, brass, timpani, harp). F
       content:
         PLAN_SYSTEM +
         knowledge +
-        progressionBlock(userPrompt, opts.seed) +
+        progressionBlock(progc) +
+        (opts.seed !== undefined ? variationBlock(opts.seed, progc, cards, userPrompt) : "") +
         (opts.corpus === false ? "" : corpusGuidance()) +
         complexityBlock(bars, opts.complexity) +
         endingRule +
@@ -275,3 +322,7 @@ export function melodyMessages(
     { role: "user", content: user },
   ];
 }
+
+
+
+

@@ -40,6 +40,44 @@ describe("plan prompt", () => {
     const text = planMessages("オーケストラ", 8, false, "orchestra")[0]!.content;
     expect(text).toContain("ORCHESTRAL");
   });
+
+  it("varies key/tempo/progression by seed (same prompt does not produce the same plan)", () => {
+    const a = planMessages("ローファイ", 8, false, "band", { seed: 1 })[0]!.content;
+    const b = planMessages("ローファイ", 8, false, "band", { seed: 2 })[0]!.content;
+    expect(a).toContain("Variation for this generation");
+    expect(a).toContain("Tonic pitch class");
+    expect(a).not.toBe(b);
+    // 同じseedなら同じプロンプト (再現性)
+    expect(a).toBe(planMessages("ローファイ", 8, false, "band", { seed: 1 })[0]!.content);
+  });
+
+  it("keeps the suggested tempo within the genre range", () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const text = planMessages("ローファイ", 8, false, "band", { seed })[0]!.content;
+      const m = /Tempo: about (\d+) BPM/.exec(text);
+      expect(m).not.toBeNull();
+      const bpm = Number(m![1]);
+      expect(bpm).toBeGreaterThanOrEqual(70);
+      expect(bpm).toBeLessThanOrEqual(90);
+    }
+  });
+
+  it("rotates which genre progression cards are shown by seed", () => {
+    const ids = ["jpop-6415", "rock-minor", "rock-145", "rock-andalusian", "pop-1564"];
+    const shown = new Set<string>();
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const text = planMessages("ロック", 8, false, "band", { seed })[0]!.content;
+      const present = ids.filter((id) => text.includes(`[${id}]`));
+      expect(present.length).toBe(4); // 5枚中4枚
+      shown.add(present.join(","));
+    }
+    // seedにより提示する組み合わせが変わる
+    expect(shown.size).toBeGreaterThan(1);
+  });
+
+  it("does not add variation hints when no seed is provided", () => {
+    expect(planMessages("ローファイ", 8)[0]!.content).not.toContain("Variation for this generation");
+  });
 });
 
 describe("melody prompt", () => {

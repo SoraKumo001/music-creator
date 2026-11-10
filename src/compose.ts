@@ -39,6 +39,7 @@ import { repairPlan } from "./theory/repair";
 import { analyzeChord } from "./theory/roman";
 import { parseKeyName } from "./theory/key";
 import { parseKey, SCALES } from "./theory/index";
+import { checkCommonProgression } from "./theory/progression-shape";
 import { mulberry32, pickSoftmaxSeeded, resolveSeed } from "./util/random";
 import { generateOrchestra } from "./theory/orchestra";
 import {
@@ -397,6 +398,21 @@ export async function compose(
         throw new Error(
           errors.map((i) => `${i.code}: ${i.message}`).join(" / "),
         );
+      // 使い古された定番進行をそのまま採用しない (1回だけ差し戻す)
+      if (planAttempts === 1) {
+        const verdict = checkCommonProgression(p, bars, prompt);
+        if (verdict.common) {
+          messages.push(
+            { role: "assistant", content: res.content },
+            {
+              role: "user",
+              content: `The A-section progression (${verdict.skeleton.join("–")}) is the most overused default. Choose a DIFFERENT skeleton from the vocabulary above — e.g. one that changes the root motion or starts on a non-tonic degree — and return the corrected full JSON only.`,
+            },
+          );
+          lastError = "common progression";
+          continue;
+        }
+      }
       plan = p;
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
@@ -759,4 +775,5 @@ export async function compose(
     },
   };
 }
+
 
