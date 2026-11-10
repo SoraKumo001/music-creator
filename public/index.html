@@ -54,6 +54,7 @@
 <main>
   <h1>Music Creator</h1>
   <p class="sub">曲のイメージを書くと、AIが作曲してMIDIファイルを出力します。</p>
+  <p class="sub" id="ai-status" title="サーバーの環境変数 (LLM_PROVIDER / LLM_MODEL) で切り替えられます">AI: 確認中…</p>
 
   <form id="form" class="card">
     <label for="prompt">どんな曲にしますか?</label>
@@ -793,6 +794,24 @@ $("clearAll").onclick = async () => {
 // 初期表示
 window.updateSaveButton();
 renderLibrary();
+
+// 現在のAI設定を表示 (APIキーはサーバーが返さない)
+(async () => {
+  try {
+    const res = await fetch("/api/config");
+    const cfg = await res.json();
+    const el = document.getElementById("ai-status");
+    if (!el) return;
+    if (!res.ok) {
+      el.textContent = `AI: 設定エラー (${cfg.error ?? "unknown"})`;
+      return;
+    }
+    el.textContent = `AI: ${cfg.label} / ${cfg.model}${cfg.hasApiKey || cfg.auth === "none" ? "" : " (APIキー未設定)"}`;
+  } catch {
+    const el = document.getElementById("ai-status");
+    if (el) el.textContent = "AI: 接続先を取得できませんでした";
+  }
+})();
 
 </script>
 </body>

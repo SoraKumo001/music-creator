@@ -1,21 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { requireLlmConfig } from "./_llm";
 import { join } from "node:path";
 import { assemble } from "../src/compose";
 import { evaluateCorpusFit } from "../src/eval/corpusFit";
 import { corpusProfile } from "../src/knowledge/corpus";
 import type { CorpusProfile } from "../src/analyze/corpus";
 import { PlanSchema, resolveSections } from "../src/plan";
-
-function loadEnv(): Record<string, string> {
-  const env: Record<string, string> = { ...(process.env as Record<string, string>) };
-  if (existsSync(".dev.vars")) {
-    for (const line of readFileSync(".dev.vars", "utf8").split(/\r?\n/)) {
-      const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line);
-      if (m) env[m[1]!] = m[2]!.trim();
-    }
-  }
-  return env;
-}
 
 const argOf = (name: string) => process.argv.find((a: string) => a.startsWith(`--${name}=`))?.split("=")[1];
 
@@ -28,8 +18,7 @@ async function main() {
   const rows: { name: string; total: number; notes: string[]; parts?: Record<string, number> }[] = [];
 
   if (live) {
-    const env = loadEnv();
-    if (!env.LLM_API_KEY) throw new Error("LLM_API_KEY is not set (.dev.vars)");
+    const cfg = requireLlmConfig();
     const { compose } = await import("../src/compose");
     const prompts = argOf("prompts")?.split("|") ?? ["疾走感のあるロック", "静かなローファイ", "悲しいピアノバラード"];
     const bars = Number(argOf("bars") ?? 16);
@@ -45,12 +34,7 @@ async function main() {
       for (const complexity of complexities) {
         for (const cond of conditions) {
           const result = await compose(
-            {
-              baseUrl: env.LLM_BASE_URL ?? "https://opencode.ai/inference/go/openai/v1",
-              model: env.LLM_MODEL ?? "deepseek-v4.1-flash",
-              apiKey: env.LLM_API_KEY,
-              extraBody: { thinking: { type: "disabled" } },
-            },
+            cfg,
             prompt, bars, { complexity, creativity: 0.5, seed: 7, corpusPrompt: cond.corpusPrompt, corpusRules: cond.corpusRules },
           );
           const fit = evaluateCorpusFit(result.plan, result.score, profile, { complexity });
@@ -189,6 +173,7 @@ main().catch((e) => {
   console.error(e instanceof Error ? e.message : e);
   process.exit(1);
 });
+
 
 
 

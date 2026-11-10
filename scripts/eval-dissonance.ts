@@ -8,6 +8,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { requireLlmConfig } from "./_llm";
 import { join } from "node:path";
 import { assemble } from "../src/compose";
 import { PlanSchema, resolveSections } from "../src/plan";
@@ -15,17 +16,6 @@ import { chordAt, type ChordEvent } from "../src/theory/accompaniment";
 import { findDissonances, reduceDissonances } from "../src/theory/dissonance";
 import { SCALES } from "../src/theory/index";
 import { parseKeyName } from "../src/theory/key";
-
-function loadEnv(): Record<string, string> {
-  const env: Record<string, string> = { ...(process.env as Record<string, string>) };
-  if (existsSync(".dev.vars")) {
-    for (const line of readFileSync(".dev.vars", "utf8").split(/\r?\n/)) {
-      const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line);
-      if (m) env[m[1]!] = m[2]!.trim();
-    }
-  }
-  return env;
-}
 
 const argOf = (name: string) => process.argv.find((a: string) => a.startsWith(`--${name}=`))?.split("=")[1];
 
@@ -72,19 +62,13 @@ async function main() {
   const rows: Row[] = [];
 
   if (live) {
-    const env = loadEnv();
-    if (!env.LLM_API_KEY) throw new Error("LLM_API_KEY is not set (.dev.vars)");
+    const cfg = requireLlmConfig();
     const { compose } = await import("../src/compose");
     const prompts = argOf("prompts")?.split("|") ?? ["疾走感のあるゲームステージBGM", "静かなローファイ", "明るいアニメ風ポップ"];
     const bars = Number(argOf("bars") ?? 32);
     for (const prompt of prompts) {
       const result = await compose(
-        {
-          baseUrl: env.LLM_BASE_URL ?? "https://opencode.ai/inference/go/openai/v1",
-          model: env.LLM_MODEL ?? "deepseek-v4.1-flash",
-          apiKey: env.LLM_API_KEY,
-          extraBody: { thinking: { type: "disabled" } },
-        },
+        cfg,
         prompt, bars, { complexity: "rich", creativity: 0.5, seed: 7 },
       );
       // 後処理は compose 内で既に適用済み。同じプランから再構成して比較する
@@ -170,6 +154,7 @@ main().catch((e) => {
   console.error(e instanceof Error ? e.message : e);
   process.exit(1);
 });
+
 
 
 

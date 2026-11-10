@@ -7,8 +7,25 @@ directory = "./public"
 run_worker_first = ["/api/*"]
 
 [vars]
+# ---- AI プロバイダ設定 ----
+# OpenAI 互換 API ならどれでも使える。詳細: docs/llm-provider.md
+#   openai | azure | openrouter | groq | deepseek | ollama | opencode | custom
+LLM_PROVIDER = "opencode"
+# 既定プロバイダ (opencode) のエンドポイントとモデル
 LLM_BASE_URL = "https://opencode.ai/inference/go/openai/v1"
 LLM_MODEL = "deepseek-v4.1-flash"
-# 推論(thinking)を無効化すると約10倍速い。品質重視なら空文字にして有効化
+# プロバイダ固有の body 拡張。opencode では推論無効化で約10倍速い
+# (OpenAI 等に切り替えるときは空にする)
 LLM_EXTRA_BODY = "{\"thinking\":{\"type\":\"disabled\"}}"
-# APIキーは `wrangler secret put LLM_API_KEY`(ローカルは .dev.vars)
+# タイムアウトとリトライ
+LLM_TIMEOUT_MS = "60000"
+LLM_MAX_RETRIES = "2"
+# APIキーは `wrangler secret put LLM_API_KEY` (ローカルは .dev.vars)
+
+# 例: OpenAI 本家に切り替える場合
+# [env.openai.vars]
+# LLM_PROVIDER = "openai"
+# LLM_MODEL = "gpt-4o-mini"
+# LLM_BASE_URL = "https://api.openai.com/v1"
+# LLM_EXTRA_BODY = ""
+# (デプロイは wrangler deploy --env openai。シークレットも --env ごとに設定)

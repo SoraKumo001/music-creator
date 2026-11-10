@@ -9,6 +9,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { requireLlmConfig } from "./_llm";
 import { join } from "node:path";
 import { assemble } from "../src/compose";
 import { extractFeatures, type MidiFeatures } from "../src/analyze/features";
@@ -17,17 +18,6 @@ import { scoreToMidi } from "../src/midi/toMidi";
 import { PlanSchema, resolveSections } from "../src/plan";
 
 const argOf = (name: string) => process.argv.find((a: string) => a.startsWith(`--${name}=`))?.split("=")[1];
-
-function loadEnv(): Record<string, string> {
-  const env: Record<string, string> = { ...(process.env as Record<string, string>) };
-  if (existsSync(".dev.vars")) {
-    for (const line of readFileSync(".dev.vars", "utf8").split(/\r?\n/)) {
-      const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line);
-      if (m) env[m[1]!] = m[2]!.trim();
-    }
-  }
-  return env;
-}
 
 const median = (values: number[]): number => {
   if (values.length === 0) return 0;
@@ -118,8 +108,7 @@ async function generatedFeatures(): Promise<{ melody: MidiFeatures[]; top: MidiF
     return { melody, top };
   }
 
-  const env = loadEnv();
-  if (!env.LLM_API_KEY) throw new Error("LLM_API_KEY is not set (.dev.vars)");
+  const cfg = requireLlmConfig();
   const { compose } = await import("../src/compose");
   const bars = Number(argOf("bars") ?? 32);
   const prompts = argOf("prompts")?.split("|") ?? ["疾走感のあるゲームステージBGM", "静かなローファイ", "明るいアニメ風ポップ", "ダークなボス戦BGM"];
@@ -128,12 +117,7 @@ async function generatedFeatures(): Promise<{ melody: MidiFeatures[]; top: MidiF
   mkdirSync(outDir, { recursive: true });
   for (const prompt of prompts) {
     const result = await compose(
-      {
-        baseUrl: env.LLM_BASE_URL ?? "https://opencode.ai/inference/go/openai/v1",
-        model: env.LLM_MODEL ?? "deepseek-v4.1-flash",
-        apiKey: env.LLM_API_KEY,
-        extraBody: { thinking: { type: "disabled" } },
-      },
+      cfg,
       prompt, bars, { complexity: "rich", creativity: 0.5, seed: 11 },
     );
     const path = `${outDir}/${melody.length + 1}-${prompt.slice(0, 12).replace(/[\\/:*?"<>|]/g, "_")}.mid`;
@@ -198,5 +182,6 @@ main().catch((e) => {
   console.error(e instanceof Error ? e.message : e);
   process.exit(1);
 });
+
 
 

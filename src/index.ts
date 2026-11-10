@@ -2,8 +2,18 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { COMPLEXITIES } from "./plan";
 import { compose } from "./compose";
+import { describeLlmConfig, resolveLlmConfig } from "./llm/config";
 
-type Env = { LLM_API_KEY: string; LLM_BASE_URL: string; LLM_MODEL: string; LLM_EXTRA_BODY?: string };
+/**
+ * 環境変数 (wrangler.toml の [vars] / secret / ローカルの .dev.vars) で
+ * AI プロバイダを切り替える。詳細は docs/llm-provider.md を参照。
+ */
+type Env = Record<string, string | undefined> & {
+  LLM_API_KEY?: string;
+  LLM_BASE_URL?: string;
+  LLM_MODEL?: string;
+  LLM_PROVIDER?: string;
+};
 
 const Body = z.object({
   prompt: z.string().min(1).max(1000),
@@ -26,10 +36,15 @@ const app = new Hono<{ Bindings: Env }>();
 app.post("/api/compose", async (c) => {
   const parsed = Body.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+  let cfg;
+  try {
+    cfg = resolveLlmConfig(c.env);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "LLM config error" }, 500);
+  }
   try {
     const result = await compose(
-      { baseUrl: c.env.LLM_BASE_URL, model: c.env.LLM_MODEL, apiKey: c.env.LLM_API_KEY,
-        extraBody: c.env.LLM_EXTRA_BODY ? JSON.parse(c.env.LLM_EXTRA_BODY) : undefined },
+      cfg,
       parsed.data.prompt,
       parsed.data.bars,
       { loop: parsed.data.loop, ensemble: parsed.data.ensemble, seed: parsed.data.seed ?? undefined, creativity: parsed.data.creativity, complexity: parsed.data.complexity },
@@ -46,5 +61,26 @@ app.post("/api/compose", async (c) => {
 });
 
 app.get("/api/health", (c) => c.json({ ok: true }));
+
+/** 現在の AI 設定の要約 (APIキーは返さない)。UI・動作確認用 */
+app.get("/api/config", (c) => {
+  try {
+    const summary = describeLlmConfig(resolveLlmConfig(c.env));
+    return c.json(summary);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "LLM config error" }, 500);
+  }
+});
+
+/** 利用可能なプロバイダ一覧 (設定画面用) */
+app.get("/api/providers", async (c) => {
+  const { PROVIDER_IDS, PROVIDER_PRESETS } = await import("./llm/config");
+  return c.json(
+    PROVIDER_IDS.map((id) => {
+      const p = PROVIDER_PRESETS[id];
+      return { id, label: p.label, defaultModel: p.defaultModel, baseUrl: p.baseUrl, auth: p.auth, notes: p.notes };
+    }),
+  );
+});
 
 export default app;

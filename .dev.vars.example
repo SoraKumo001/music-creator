@@ -1,1 +1,40 @@
-LLM_API_KEY=your-opencode-go-api-key
+# ---- AI プロバイダ設定 ----
+# OpenAI 互換 API ならどれでも使える。詳細: docs/llm-provider.md
+#
+# LLM_PROVIDER:
+#   openai | azure | openrouter | groq | deepseek | ollama | opencode | custom
+#   既定は opencode (このリポジトリの従来設定)
+LLM_PROVIDER=openai
+
+# APIキー (ollama は不要。Azure は api-key ヘッダーで送信)
+LLM_API_KEY=sk-...
+
+# モデル (Azure はデプロイメント名)
+#LLM_MODEL=gpt-4o-mini
+
+# ベースURLの上書き (プロキシや独自エンドポイント用)
+# Azure: https://<resource>.openai.azure.com
+# openai 互換サーバ: http://localhost:8000/v1 など
+#LLM_BASE_URL=
+
+# ---- 任意設定 ----
+# Azure の api-version
+#LLM_API_VERSION=2024-10-21
+# 認証方式: bearer | api-key | none | header
+#LLM_AUTH_STYLE=bearer
+# 認証ヘッダー名 (LLM_AUTH_STYLE=header のときに必須)
+#LLM_API_KEY_HEADER=Authorization
+# 追加ヘッダー (JSON)
+#LLM_EXTRA_HEADERS={}
+# リクエストbodyへ混ぜる値 (JSON)。プロバイダ固有の拡張に使う
+#LLM_EXTRA_BODY={}
+# response_format: json_object を送るか
+#LLM_JSON_MODE=true
+# 既定の temperature / max_tokens
+#LLM_TEMPERATURE=0.8
+#LLM_MAX_TOKENS=
+# タイムアウト(ms) / リトライ回数 (429・5xx で指数バックオフ)
+#LLM_TIMEOUT_MS=60000
+#LLM_MAX_RETRIES=2
+# User-Agent
+#LLM_USER_AGENT=music-creator/0.1
