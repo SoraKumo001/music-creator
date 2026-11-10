@@ -1,0 +1,14 @@
+name = "music-creator"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[assets]
+directory = "./public"
+run_worker_first = ["/api/*"]
+
+[vars]
+LLM_BASE_URL = "https://opencode.ai/inference/go/openai/v1"
+LLM_MODEL = "deepseek-v4.1-flash"
+# 推論(thinking)を無効化すると約10倍速い。品質重視なら空文字にして有効化
+LLM_EXTRA_BODY = "{\"thinking\":{\"type\":\"disabled\"}}"
+# APIキーは `wrangler secret put LLM_API_KEY`(ローカルは .dev.vars)

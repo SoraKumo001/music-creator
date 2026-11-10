@@ -1,0 +1,138 @@
+import { sectionAt, type Section } from "../plan";
+import type { Note } from "../score";
+import { bassPitch, center, parseChord, voice, type Chord } from "./harmony";
+
+export type ChordEvent = { start: number; symbol: string };
+
+export const COMP_STYLES = ["pad", "block", "arpeggio", "offbeat", "strum"] as const;
+export const BASS_STYLES = ["root", "rootFifth", "walking", "eighths", "none"] as const;
+
+/** 決定的な「人間らしさ」: 位置ごとにベロシティを±揺らす */
+const jitter = (i: number) => ((i * 7) % 5) - 2;
+
+type Segment = { start: number; len: number; chord: Chord; next?: Chord };
+
+/** コードイベントを区間に変換し、cuts(セクション境界など)でも分割する */
+export function toSegments(events: ChordEvent[], totalBeats: number, cuts: number[] = []): Segment[] {
+  const sorted = [...events].sort((a, b) => a.start - b.start).filter((e) => e.start < totalBeats);
+  if (sorted.length === 0) throw new Error("chords is empty");
+  const chords = sorted.map((e) => parseChord(e.symbol));
+  const starts = sorted.map((e, i) => (i === 0 ? 0 : e.start)); // 先頭は0拍から
+  const out: Segment[] = [];
+  sorted.forEach((_, i) => {
+    const s = starts[i]!;
+    const e = starts[i + 1] ?? totalBeats;
+    const points = [s, ...cuts.filter((c) => c > s && c < e).sort((a, b) => a - b), e];
+    for (let k = 0; k < points.length - 1; k++) {
+      const isLastPart = k === points.length - 2;
+      out.push({ start: points[k]!, len: points[k + 1]! - points[k]!, chord: chords[i]!, next: isLastPart ? chords[i + 1] : chords[i] });
+    }
+  });
+  return out.filter((s) => s.len > 0);
+}
+
+/** 指定拍で鳴っているコード */
+export function chordAt(events: ChordEvent[], beat: number): Chord {
+  const sorted = [...events].sort((a, b) => a.start - b.start);
+  let cur = sorted[0]!;
+  for (const e of sorted) if (e.start <= beat) cur = e;
+  return parseChord(cur.symbol);
+}
+
+function hit(out: Note[], seg: Segment, rel: number, dur: number, pitch: number, vel: number, gain: number) {
+  if (rel >= seg.len - 1e-6) return;
+  out.push({
+    pitch,
+    start: seg.start + rel,
+    duration: Math.max(0.1, Math.min(dur, seg.len - rel)),
+    velocity: Math.max(1, Math.min(127, Math.round(vel * gain))),
+  });
+}
+
+export type Arrangement = { sections: Section[]; totalBeats: number; beatsPerBar: number };
+
+const cutsOf = (a: Arrangement) => [...a.sections.map((s) => s.start), a.totalBeats - a.beatsPerBar];
+/** 最終小節は「終止」として扱う(和音とベースを伸ばす) */
+const isEnding = (a: Arrangement, beat: number) => a.sections.length > 0 && beat >= a.totalBeats - a.beatsPerBar - 1e-6;
+
+export function generateComp(events: ChordEvent[], a: Arrangement): Note[] {
+  const out: Note[] = [];
+  let c = 62;
+  let n = 0;
+  for (const seg of toSegments(events, a.totalBeats, cutsOf(a))) {
+    const sec = sectionAt(a.sections, seg.start);
+    const g = sec.gain;
+    const v = voice(seg.chord, c);
+    c = center(v);
+    const style = isEnding(a, seg.start) ? "pad" : sec.comp;
+    switch (style) {
+      case "block": // 1拍目と3拍目裏のスタブ
+        for (const p of v) hit(out, seg, 0, 1.5, p, 72 + jitter(n), g);
+        for (const p of v) hit(out, seg, 2.5, 1, p, 60 + jitter(n + 1), g);
+        break;
+      case "arpeggio": {
+        const seq = v.length > 2 ? [...v, ...v.slice(1, -1).reverse()] : v;
+        for (let s = 0, i = 0; s < seg.len; s += 0.5, i++) {
+          hit(out, seg, s, 0.75, seq[i % seq.length]!, (s % 1 === 0 ? 72 : 56) + jitter(n + i), g);
+        }
+        break;
+      }
+      case "offbeat":
+        for (let s = 0.5, i = 0; s < seg.len; s += 1, i++) for (const p of v) hit(out, seg, s, 0.4, p, 70 + jitter(n + i), g);
+        break;
+      case "strum":
+        for (let s = 0, i = 0; s < seg.len; s += 1, i++) for (const p of v) hit(out, seg, s, 0.9, p, (s % 2 === 0 ? 78 : 64) + jitter(n + i), g);
+        break;
+      default: // pad
+        for (const p of v) hit(out, seg, 0, seg.len - 0.05, p, 58 + jitter(n), g);
+    }
+    n++;
+  }
+  return out;
+}
+
+export function generateBass(events: ChordEvent[], a: Arrangement): Note[] {
+  const out: Note[] = [];
+  let n = 0;
+  for (const seg of toSegments(events, a.totalBeats, cutsOf(a))) {
+    const sec = sectionAt(a.sections, seg.start);
+    if (sec.bass === "none") continue;
+    const g = sec.gain;
+    const root = bassPitch(seg.chord.bass);
+    const fifth = root + 7;
+    const third = root + (seg.chord.tones[0] === (seg.chord.root + 3) % 12 ? 3 : 4);
+    const v = (b: number) => b + jitter(n++);
+    if (isEnding(a, seg.start)) {
+      hit(out, seg, 0, seg.len - 0.05, root, v(90), g);
+      continue;
+    }
+    switch (sec.bass) {
+      case "rootFifth":
+        hit(out, seg, 0, 1, root, v(92), g);
+        hit(out, seg, 1, 1, fifth, v(78), g);
+        hit(out, seg, 2, 1, root, v(86), g);
+        hit(out, seg, 3, 1, fifth, v(74), g);
+        break;
+      case "walking":
+        for (let b = 0; b < seg.len; b++) {
+          const i = b % 4;
+          let p = [root, third, fifth, fifth][i]!;
+          if (i === 3 || b >= seg.len - 1) {
+            // 次のコードのルートへ半音アプローチ
+            const target = seg.next ? bassPitch(seg.next.bass) : root;
+            p = target + (target > fifth ? -1 : 1);
+          }
+          hit(out, seg, b, 0.95, p, v(i === 0 ? 92 : 78), g);
+        }
+        break;
+      case "eighths":
+        for (let s = 0, i = 0; s < seg.len; s += 0.5, i++) hit(out, seg, s, 0.45, i % 2 ? root + 12 : root, v(s % 1 === 0 ? 92 : 70), g);
+        break;
+      default: // root
+        hit(out, seg, 0, 1.75, root, v(95), g);
+        hit(out, seg, 2, 1.25, root, v(82), g);
+        hit(out, seg, 3.5, 0.5, fifth, v(66), g);
+    }
+  }
+  return out;
+}

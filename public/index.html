@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Creator</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1f; --muted:#6b6b70; --card:#fff; --line:#e2e2e0; --accent:#3b5bdb; --accent-fg:#fff; --note:#3b5bdb; --grid:#ececea; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#141416; --fg:#ececee; --muted:#9a9aa2; --card:#1e1e22; --line:#33333a; --accent:#7b93ff; --accent-fg:#101014; --note:#7b93ff; --grid:#2a2a30; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:1.5rem; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  label { display:block; font-size:.875rem; color:var(--muted); margin-bottom:4px; }
+  textarea, select { width:100%; font:inherit; color:inherit; background:transparent; border:1px solid var(--line); border-radius:8px; padding:10px; }
+  textarea { min-height:96px; resize:vertical; }
+  .row { display:flex; gap:12px; align-items:end; margin-top:12px; flex-wrap:wrap; }
+  .row > div { flex:1 1 140px; }
+  button { font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:var(--accent-fg); padding:10px 20px; }
+  button.secondary { background:transparent; color:var(--accent); }
+  button:disabled { opacity:.5; cursor:wait; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .chip { font-size:.8125rem; padding:4px 10px; background:transparent; color:var(--muted); border:1px solid var(--line); }
+  #status { margin:16px 0; color:var(--muted); min-height:1.6em; }
+  #status.err { color:#d6336c; }
+  #result { display:none; margin-top:16px; }
+  #meta { color:var(--muted); font-size:.875rem; margin:4px 0 12px; }
+  .rollwrap { position:relative; }
+  canvas { width:100%; height:240px; display:block; border:1px solid var(--line); border-radius:8px; background:var(--card); }
+  #head { position:absolute; inset:0; background:transparent; border-color:transparent; pointer-events:none; }
+  .row button { flex:0 0 auto; }
+  .legend { display:flex; gap:12px; flex-wrap:wrap; font-size:.8125rem; color:var(--muted); margin:8px 0 12px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:baseline; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Music Creator</h1>
+  <p class="sub">曲のイメージを書くと、AIが作曲してMIDIファイルを出力します。</p>
+
+  <form id="form" class="card">
+    <label for="prompt">どんな曲にしますか?</label>
+    <textarea id="prompt" maxlength="1000" placeholder="例: 雨の夜に聴きたい、静かなローファイ。ピアノ中心でゆったり">ローファイな夜のBGM</textarea>
+    <div class="chips" id="chips"></div>
+    <div class="row">
+      <div>
+        <label for="bars">長さ</label>
+        <select id="bars">
+          <option value="4">4小節</option>
+          <option value="8" selected>8小節</option>
+          <option value="16">16小節</option>
+        </select>
+      </div>
+      <button id="go" type="submit">作曲する</button>
+    </div>
+  </form>
+
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <section id="result" class="card">
+    <strong id="title"></strong>
+    <div id="meta"></div>
+    <div class="rollwrap">
+      <canvas id="roll" aria-label="ピアノロール"></canvas>
+      <canvas id="head" aria-hidden="true"></canvas>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="row" style="margin-top:0">
+      <button id="play" type="button">▶ 試聴</button>
+      <button id="dl" class="secondary" type="button">MIDIをダウンロード</button>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<script>
+const $ =(id) => document.getElementById(id);
+const COLORS = ["#3b5bdb", "#e8590c", "#2f9e44", "#ae3ec9", "#c2255c", "#0c8599", "#a67c00", "#495057"];
+let current = null;
+
+const examples = ["ローファイな夜のBGM", "疾走感のあるロック", "静かなクラシックのピアノ曲", "ジャズの小品", "明るいEDM"];
+for (const ex of examples) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip secondary"; b.textContent = ex;
+  b.onclick = () => { $("prompt").value = ex; };
+  $("chips").appendChild(b);
+}
+
+let timer;
+function startProgress() {
+  const t0 = Date.now();
+  const tick = () => { $("status").textContent = `作曲中… ${Math.round((Date.now() - t0) / 1000)}秒(通常10秒前後)`; };
+  tick(); timer = setInterval(tick, 1000);
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (typeof Tone !== "undefined") stop();
+  $("go").disabled = true; $("status").className = ""; $("result").style.display = "none";
+  startProgress();
+  try {
+    const res = await fetch("/api/compose", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: $("prompt").value.trim(), bars: Number($("bars").value) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "入力が正しくありません");
+    current = data; show(data);
+    $("status").textContent = "";
+  } catch (err) {
+    $("status").className = "err"; $("status").textContent = "失敗しました: " + err.message;
+  } finally {
+    clearInterval(timer); $("go").disabled = false;
+  }
+});
+
+function show({ score, attempts = 1 }) {
+  $("result").style.display = "block";
+  $("title").textContent = score.title;
+  const notes = score.tracks.reduce((n, t) => n + t.notes.length, 0);
+  $("meta").textContent = `${score.bpm} BPM ・ ${score.key} ・ ${score.timeSignature.join("/")} ・ ${score.tracks.length}トラック ・ ${notes}音` + (attempts > 1 ? ` ・ 再生成${attempts - 1}回` : "");
+  $("legend").innerHTML = "";
+  score.tracks.forEach((t, i) => {
+    const s = document.createElement("span");
+    s.innerHTML = `<i style="background:${COLORS[i % COLORS.length]}"></i>`;
+    s.append(t.name);
+    $("legend").appendChild(s);
+  });
+  drawRoll(score);
+}
+
+function drawRoll(score) {
+  const cv = $("roll"), dpr = devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  const melodic = score.tracks.filter((t) => t.channel !== 9);
+  const all = melodic.flatMap((t) => t.notes);
+  const total = Math.max(1, ...score.tracks.flatMap((t) => t.notes.map((n) => n.start + n.duration)));
+  const lo = all.length ? Math.min(...all.map((n) => n.pitch)) - 1 : 48;
+  const hi = all.length ? Math.max(...all.map((n) => n.pitch)) + 1 : 72;
+  const barBeats = score.timeSignature[0] * 4 / score.timeSignature[1];
+  const grid = getComputedStyle(document.documentElement).getPropertyValue("--grid");
+  g.strokeStyle = grid; g.lineWidth = 1;
+  for (let b = 0; b <= total; b += barBeats) { const x = Math.round(b / total * W) + .5; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+  // セクション名と境界線
+  const css = getComputedStyle(document.documentElement);
+  const TOP = 18;
+  g.font = "11px system-ui, sans-serif"; g.textBaseline = "top";
+  for (const s of (current && current.sections) || []) {
+    const x = Math.round(s.startBar * barBeats / total * W);
+    g.strokeStyle = css.getPropertyValue("--muted"); g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, H); g.stroke();
+    g.fillStyle = css.getPropertyValue("--muted"); g.fillText(s.name, x + 4, 3);
+  }
+  const nh = Math.max(2, (H - TOP) / (hi - lo + 1));
+  score.tracks.forEach((t, i) => {
+    if (t.channel === 9) return; // ドラムは音程がないため非表示
+    g.fillStyle = COLORS[i % COLORS.length]; g.globalAlpha = .85;
+    for (const n of t.notes) {
+      const x = n.start / total * W, w = Math.max(2, n.duration / total * W - 1);
+      const y = H - (n.pitch - lo + 1) * nh;
+      g.fillRect(x, y, w, nh - 1);
+    }
+  });
+  g.globalAlpha = 1;
+}
+addEventListener("resize", () => current && drawRoll(current.score));
+
+// ---- ブラウザ試聴 (Tone.js) ----
+let playing = false, raf = 0, disposables = [];
+const midiHz = (p) => 440 * Math.pow(2, (p - 69) / 12);
+
+function buildVoice(track) {
+  const p = track.program;
+  if (track.channel === 9) return null;
+  if (p >= 32 && p <= 39) { // ベース
+    const s = new Tone.MonoSynth({ oscillator: { type: "triangle" }, envelope: { attack: .01, decay: .2, sustain: .6, release: .2 }, volume: -6 }).toDestination();
+    return { play: (n, t, d) => s.triggerAttackRelease(midiHz(n.pitch), d, t, n.velocity / 127), nodes: [s] };
+  }
+  const type = p >= 40 && p <= 55 ? "sawtooth" : p >= 80 && p <= 95 ? "square" : "triangle";
+  const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type }, envelope: { attack: .02, decay: .2, sustain: .4, release: .5 }, volume: -12 }).toDestination();
+  return { play: (n, t, d) => s.triggerAttackRelease(midiHz(n.pitch), d, t, n.velocity / 127), nodes: [s] };
+}
+
+function buildDrums() {
+  const kick = new Tone.MembraneSynth({ volume: -4 }).toDestination();
+  const snare = new Tone.NoiseSynth({ envelope: { attack: .001, decay: .15, sustain: 0 }, volume: -12 }).toDestination();
+  const hat = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: .001, decay: .04, sustain: 0 }, volume: -22 }).toDestination();
+  return {
+    play: (n, t) => {
+      const v = n.velocity / 127;
+      if (n.pitch === 35 || n.pitch === 36) kick.triggerAttackRelease("C1", .15, t, v);
+      else if (n.pitch === 38 || n.pitch === 40 || n.pitch === 39) snare.triggerAttackRelease(.1, t, v);
+      else if (n.pitch >= 41 && n.pitch <= 50 && ![42, 44, 46].includes(n.pitch)) kick.triggerAttackRelease(midiHz(n.pitch - 12), .15, t, v * .7);
+      else hat.triggerAttackRelease(.04, t, v);
+    },
+    nodes: [kick, snare, hat],
+  };
+}
+
+function stop() {
+  playing = false; cancelAnimationFrame(raf);
+  Tone.Transport.stop(); Tone.Transport.cancel();
+  disposables.forEach((n) => n.dispose()); disposables = [];
+  const h = $("head"); h.getContext("2d").clearRect(0, 0, h.width, h.height);
+  $("play").textContent = "▶ 試聴";
+}
+
+async function play() {
+  if (typeof Tone === "undefined") { $("status").className = "err"; $("status").textContent = "試聴用ライブラリを読み込めませんでした"; return; }
+  await Tone.start();
+  const { score } = current, spb = 60 / score.bpm;
+  const total = Math.max(...score.tracks.flatMap((t) => t.notes.map((n) => n.start + n.duration))) * spb;
+  for (const t of score.tracks) {
+    const v = t.channel === 9 ? buildDrums() : buildVoice(t);
+    disposables.push(...v.nodes);
+    for (const n of t.notes) Tone.Transport.schedule((time) => v.play(n, time, n.duration * spb), n.start * spb);
+  }
+  Tone.Transport.schedule(() => stop(), total + 1);
+  Tone.Transport.start("+0.1");
+  playing = true; $("play").textContent = "■ 停止";
+  const h = $("head"), dpr = devicePixelRatio || 1;
+  h.width = h.clientWidth * dpr; h.height = h.clientHeight * dpr;
+  const g = h.getContext("2d");
+  const frame = () => {
+    if (!playing) return;
+    const x = Math.min(1, Tone.Transport.seconds / total) * h.width;
+    g.clearRect(0, 0, h.width, h.height);
+    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--fg");
+    g.fillRect(x, 0, 2 * dpr, h.height);
+    raf = requestAnimationFrame(frame);
+  };
+  frame();
+}
+
+$("play").onclick = () => (playing ? stop() : play());
+
+$("dl").onclick = () => {
+  const bin = atob(current.midi), bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([bytes], { type: "audio/midi" }));
+  a.download = (current.score.title || "song").replace(/[\\/:*?"<>|]/g, "_") + ".mid";
+  a.click(); URL.revokeObjectURL(a.href);
+};
+</script>
+</body>
+</html>
