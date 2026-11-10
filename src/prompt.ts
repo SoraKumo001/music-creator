@@ -120,7 +120,8 @@ Rules:
 - On strong beats (first and middle beat of a bar) and on long notes, use tones of the current chord. Use scale tones as passing notes between them.
 - Build the melody from a short motif: state it, repeat it with variation, then contrast it in the next section. Reuse rhythms across bars.
 - Shape each phrase with a clear peak/climax. Mix mostly stepwise motion with occasional expressive leaps (e.g. 5th, octave) for emotional hooks.
-- Mix note lengths (e.g. eighths, quarters, dotted and held notes), use syncopation across beats, and leave rests so phrases can breathe.
+- Phrasing and breathing (essential): divide your melody into natural 2-bar or 4-bar phrases. End each phrase with a rest of 1-2 beats (e.g. leave the 4th beat or beats 3-4 open as a breathing pause before the next phrase). Do not play non-stop notes through every single measure without pause.
+- Mix note lengths (e.g. eighths, quarters, dotted and held notes), use syncopation across beats, and leave space for other instruments.
 - Follow the section energy: sparse or silent in energy 1 sections, most active and highest in energy 3 sections.
 - Velocity dynamics: vary velocity naturally (65-110). Give peak and accented notes higher velocity (95-110) and softer touches (65-80) to pickup/passing notes. Do not output constant velocity.`;
 

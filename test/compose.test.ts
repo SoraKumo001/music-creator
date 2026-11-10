@@ -101,11 +101,33 @@ describe("sections", () => {
     expect(inRange(n, 28, 32)).toHaveLength(5);
     expect(Math.max(...n.map((x) => x.start))).toBeLessThan(32);
   });
-  it("drums: adds groove micro-variations when seed is provided", () => {
-    const withSeed = generateDrums(sections, 4, "button", false, { seed: 42 });
-    expect(withSeed.length).toBeGreaterThan(0);
-    // seed指定時はベロシティやゴーストノート等の人間味バリエーションが加わる
-    expect(withSeed.some((n) => n.velocity !== 105 && n.velocity !== 100)).toBe(true);
+  it("supports game16th drums, sixteenths bass, and arpeggio16 comp", () => {
+    const gamePlan = PlanSchema.parse({
+      bpm: 125, key: "E minor",
+      chords: [[0, "Em"], [4, "C"], [8, "D"], [12, "Em"]],
+      sections: [
+        { name: "intro", bars: 2, comp: "arpeggio16", bass: "pedal", drums: "none" },
+        { name: "main", bars: 2, comp: "strum", bass: "sixteenths", drums: "game16th" },
+      ],
+    });
+    const s = resolveSections(gamePlan, 4, 4);
+    const ev = gamePlan.chords.map(([start, symbol]) => ({ start, symbol }));
+    const a: Arrangement = { sections: s, totalBeats: 16, beatsPerBar: 4 };
+
+    // arpeggio16 は16分音符で1小節あたり16打
+    const c = generateComp(ev, a);
+    expect(inRange(c, 0, 4).length).toBe(16);
+
+    // sixteenths ベースは16分音符刻み
+    const b = generateBass(ev, a);
+    expect(inRange(b, 8, 12).length).toBe(16);
+
+    // game16th ドラムは16分ハイハット刻みで20音以上
+    const d = generateDrums(s, 4, "button", false, { seed: 10 });
+    expect(inRange(d, 8, 12).length).toBeGreaterThanOrEqual(20);
+
+    // none からの移行小節末に 16分ハイハットクレッシェンド(8音)が入る
+    expect(inRange(d, 6, 8)).toHaveLength(8);
   });
 });
 

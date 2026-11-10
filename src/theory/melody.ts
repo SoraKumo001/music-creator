@@ -52,7 +52,8 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
   const rhythm = band(durs.size, 3, 6, 2);
 
   const perBar = ns.length / ctx.bars;
-  const density = band(perBar, 2.5, 9, 3);
+  // 1小節あたり1.5〜8.5音を好ましい範囲とし、ゆったりした歌メロや休符も許容する
+  const density = band(perBar, 1.5, 8.5, 2.5);
 
   const ivs = ns.slice(1).map((n, i) => Math.abs(n.pitch - ns[i]!.pitch));
   const steps = ivs.filter((d) => d > 0 && d <= 2).length / ivs.length;
@@ -66,6 +67,15 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
     band(steps, 0.35, 0.8, 0.35) + leapScore - Math.max(0, bigLeaps - 0.2) * 1.5 - extremeLeaps * 2 - Math.max(0, repeats - 0.3),
   );
 
+  // フレーズの呼吸(休符): 1拍前後の休みが適度にあるか(全小節ぎっしり詰め込まれた棒演奏は減点)
+  let rests = 0;
+  for (let i = 0; i < ns.length - 1; i++) {
+    const gap = ns[i + 1]!.start - (ns[i]!.start + ns[i]!.duration);
+    if (gap >= 0.7) rests++;
+  }
+  const restRate = rests / Math.max(1, ctx.bars / 2);
+  const phrasing = band(restRate, 0.35, 1.6, 0.45);
+
   // モチーフ: 同じリズム型の小節がどれだけあるか(全く無い/全部同じ はどちらも減点)
   const barRhythm = Array.from({ length: ctx.bars }, (_, b) =>
     ns.filter((n) => Math.floor(n.start / ctx.beatsPerBar) === b).map((n) => Math.round((n.start % ctx.beatsPerBar) * 4)).join(","),
@@ -76,16 +86,17 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
   const repeated = filled.filter((r) => counts.get(r)! > 1).length / Math.max(1, filled.length);
   const motif = band(repeated, 0.25, 0.75, 0.25);
 
-  const coverage = band(filled.length / ctx.bars, 0.7, 1, 0.4);
+  // 空白小節があってもフレーズの休止として許容(0.55〜1.0)
+  const coverage = band(filled.length / ctx.bars, 0.55, 1, 0.35);
 
   const last = ns[ns.length - 1]!;
   const lastChord = chordAt(ctx.chords, last.start);
   const lastRoot = localScale(ctx, last.start).root;
   const ending = (lastChord.tones.includes(last.pitch % 12) ? 0.6 : 0) + (last.pitch % 12 === lastRoot ? 0.25 : 0) + (last.duration >= 1 ? 0.15 : 0);
 
-  const parts = { chordTone, inScale, range, rhythm, density, contour, motif, coverage, ending };
+  const parts = { chordTone, inScale, range, rhythm, density, contour, motif, coverage, ending, phrasing };
   const weights: Record<keyof typeof parts, number> = {
-    chordTone: 22, inScale: 14, range: 8, rhythm: 12, density: 8, contour: 12, motif: 10, coverage: 6, ending: 8,
+    chordTone: 20, inScale: 13, range: 8, rhythm: 11, density: 8, contour: 12, motif: 9, coverage: 5, ending: 7, phrasing: 7,
   };
   let sum = 0;
   for (const k of Object.keys(parts) as (keyof typeof parts)[]) sum += parts[k] * weights[k];

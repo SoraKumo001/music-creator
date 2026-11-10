@@ -6,8 +6,8 @@ import { mulberry32 } from "../util/random";
 
 export type ChordEvent = { start: number; symbol: string };
 
-export const COMP_STYLES = ["pad", "block", "arpeggio", "offbeat", "strum", "syncopation"] as const;
-export const BASS_STYLES = ["root", "rootFifth", "walking", "eighths", "pedal", "none"] as const;
+export const COMP_STYLES = ["pad", "block", "arpeggio", "arpeggio16", "offbeat", "strum", "syncopation"] as const;
+export const BASS_STYLES = ["root", "rootFifth", "walking", "eighths", "sixteenths", "pedal", "none"] as const;
 
 /** 決定的な「人間らしさ」: 位置ごとにベロシティを±揺らす */
 const jitter = (i: number) => ((i * 7) % 5) - 2;
@@ -41,8 +41,8 @@ export function chordAt(events: ChordEvent[], beat: number): Chord {
   return parseChord(cur.symbol);
 }
 
-function hit(out: Note[], seg: Segment, rel: number, dur: number, pitch: number, vel: number, gain: number) {
-  if (rel >= seg.len - 1e-6) return;
+function hit(out: Note[], seg: Segment, rel: number, dur: number, pitch: number, vel: number, gain: number, skip = false) {
+  if (skip || rel >= seg.len - 1e-6) return;
   out.push({
     pitch,
     start: seg.start + rel,
@@ -84,6 +84,17 @@ export function generateComp(events: ChordEvent[], a: Arrangement, opts: { seed?
         const seq = v.length > 2 ? [...v, ...v.slice(1, -1).reverse()] : v;
         for (let s = 0, i = 0; s < seg.len; s += 0.5, i++) {
           hit(out, seg, s, 0.75, seq[i % seq.length]!, (s % 1 === 0 ? 72 : 56) + jitter(n + i), gg(s));
+        }
+        break;
+      }
+      case "arpeggio16": { // 16分高速アルペジオ (ゲーム/FM音源風の煌びやかなシーケンス)
+        const top = v[v.length - 1]! + 12;
+        const seq = [...v, top, ...v.slice(1).reverse()];
+        for (let s = 0, i = 0; s < seg.len; s += 0.25, i++) {
+          const isBeat = s % 1 === 0;
+          const is8th = (s * 2) % 1 === 0;
+          const baseV = isBeat ? 76 : is8th ? 64 : 54;
+          hit(out, seg, s, 0.35, seq[i % seq.length]!, baseV + jitter(n + i), gg(s));
         }
         break;
       }
@@ -199,6 +210,19 @@ export function generateBass(events: ChordEvent[], a: Arrangement, opts: { seed?
         break;
       case "eighths":
         for (let s = 0, i = 0; s < seg.len; s += 0.5, i++) hit(out, seg, s, 0.45, i % 2 ? root + 12 : root, v(s % 1 === 0 ? 92 : 70), gg(s));
+        break;
+      case "sixteenths": // 16分音符の疾走スラップ/シンセベース (Ys II / 80s ゲームロック)
+        for (let s = 0, i = 0; s < seg.len; s += 0.25, i++) {
+          const stepInBeat = i % 4;
+          const isOctave = (i % 8 === 6 || i % 8 === 7 || (stepInBeat === 2 && i % 2 === 0));
+          let p = isOctave ? root + 12 : root;
+          if (seg.next && s >= seg.len - 0.5) {
+            const target = bassPitch(seg.next.bass);
+            p = target > root ? target - 1 : target + 1;
+          }
+          const baseV = stepInBeat === 0 ? 96 : stepInBeat === 2 ? 80 : 54;
+          hit(out, seg, s, 0.22, p, v(baseV), gg(s));
+        }
         break;
       case "pedal": // 通奏低音: ルートを引き伸ばす
         hit(out, seg, 0, seg.len - 0.05, root, v(86), g);

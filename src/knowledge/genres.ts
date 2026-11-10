@@ -50,6 +50,12 @@ export const GENRES: GenreCard[] = [
     card: "Tempo 85-115 BPM, syncopated 16ths. Chords: maj7/7th voicings with III7-VI7 turnarounds. Drums: swung hats or four-on-floor lite. Instruments: electric piano (4), mellow bass with passing tones, light drums.",
     progressions: ["jpop-marusa", "citypop-maj7", "jazz-turnaround", "lofi-maj7"],
   },
+  {
+    id: "game",
+    keywords: ["game", "ゲーム", "rpg", "イース", "ys", "ファルコム", "falcom", "古代", "fm", "レトロ", "シンセロック", "バトル", "戦闘", "フィールド"],
+    card: "Tempo 120-155 BPM. Dramatic minor or heroic major key. 80s/90s FM-synth rock style (Ys / Falcom / Yuzo Koshiro feel). Intro starts with fast 16th-note broken-chord sequence (comp: 'arpeggio16', bass: 'pedal', drums: 'none'). Verses/chorus drive with 16th-note high-energy drums (drums: 'game16th') and driving slap/synth bass (bass: 'sixteenths'). Instruments: square lead (80) or overdriven guitar (29), slap bass (37) or synth bass (38), polysynth pad (98) or guitar (29).",
+    progressions: ["jpop-komuro", "jpop-oudou", "rock-minor", "jpop-6415"],
+  },
 ];
 
 export function pickGenreCards(prompt: string): GenreCard[] {
