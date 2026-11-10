@@ -160,11 +160,11 @@ export async function compose(cfg: LlmConfig, prompt: string, bars = 8, opts: Co
   const planMs = Date.now() - t0;
 
   // ---- (1.5) 和声の検証・補正 ----
-  // creativity>=0.5で終止を分散、>=0.6でセクション境界の強制V化を半分残す
+  // creativity>=0.4で終止を分散、>=0.4でセクション境界の強制V化を半分残す (デフォルト0.5でも有効)
   // seed未指定の旧来呼び出しは従来通り (strict/authentic) のまま。rich は多様化を強制
   const useVariety = opts.seed !== undefined || opts.creativity !== undefined || complexity === "rich";
   const repaired = repairPlan(plan, bars, useVariety
-    ? { seed, sectionCadence: creativity >= 0.6 || complexity === "rich" ? "loose" : "strict", closing: creativity >= 0.5 || complexity === "rich" ? "varied" : "authentic" }
+    ? { seed, sectionCadence: creativity >= 0.4 || complexity === "rich" ? "loose" : "strict", closing: creativity >= 0.4 || complexity === "rich" ? "varied" : "authentic" }
     : {});
   plan = repaired.plan;
   if (complexity === "rich") plan = applyReharm(plan, bars, (plan.timeSignature[0] * 4) / plan.timeSignature[1], seed);

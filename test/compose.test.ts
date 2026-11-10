@@ -101,6 +101,12 @@ describe("sections", () => {
     expect(inRange(n, 28, 32)).toHaveLength(5);
     expect(Math.max(...n.map((x) => x.start))).toBeLessThan(32);
   });
+  it("drums: adds groove micro-variations when seed is provided", () => {
+    const withSeed = generateDrums(sections, 4, "button", false, { seed: 42 });
+    expect(withSeed.length).toBeGreaterThan(0);
+    // seed指定時はベロシティやゴーストノート等の人間味バリエーションが加わる
+    expect(withSeed.some((n) => n.velocity !== 105 && n.velocity !== 100)).toBe(true);
+  });
 });
 
 describe("melody", () => {
@@ -133,6 +139,15 @@ describe("melody", () => {
   it("caps the final note so the ending is not one long sustain", () => {
     const p = polishMelody(mk([[72, 28, 4]]), ctx);
     expect(p[0]!.duration).toBeLessThanOrEqual(2);
+  });
+  it("shapes velocity dynamically for musical expression", () => {
+    // 平坦なベロシティ(80固定)でも強拍やピッチ高低に応じて抑揚がつく
+    const flat = mk([[60, 0, 1], [62, 0.5, 0.5], [72, 1, 1], [64, 2, 1]]);
+    const p = polishMelody(flat, ctx);
+    const vels = p.map((n) => n.velocity);
+    expect(new Set(vels).size).toBeGreaterThan(1);
+    // 高音かつ強拍の音は弱拍の音よりベロシティが高い
+    expect(p.find((n) => n.start === 0)!.velocity).toBeGreaterThan(p.find((n) => n.start === 0.5)!.velocity);
   });
 });
 

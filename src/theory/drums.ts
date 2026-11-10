@@ -112,11 +112,37 @@ export function generateDrums(sections: Section[], beatsPerBar = 4, ending: Endi
           if (isFill && start >= base + beatsPerBar - 1 && (drum === "kick" || drum === "snare")) continue;
           notes.push({ pitch: GM_DRUMS[drum], start, duration: 0.25, velocity: vel(v, g) });
         }
+        // seed指定時: 2小節・4小節周期のマイクロバリエーション (ゴーストスネアやキック追加)
+        if (rand && !isFill && beatsPerBar >= 4) {
+          if (b % 2 === 1 && (sec.drums === "rock" || sec.drums === "basic" || sec.drums === "lofi")) {
+            // 偶数小節: 4拍目裏(step 14)に軽いゴーストスネア
+            notes.push({ pitch: GM_DRUMS.snare, start: base + 3.5, duration: 0.25, velocity: vel(46, g) });
+          }
+          if (b % 4 === 3 && sec.drums === "fourOnFloor") {
+            // 4小節目: 4拍目裏(step 14)にオープンハット
+            notes.push({ pitch: GM_DRUMS.openHat, start: base + 3.5, duration: 0.25, velocity: vel(80, g) });
+          }
+        }
       }
       if (isFill) {
-        for (let i = 0; i < 4; i++) {
-          const pitch = i < 2 ? GM_DRUMS.snare : i === 2 ? GM_DRUMS.tomHigh : GM_DRUMS.tomLow;
-          notes.push({ pitch, start: base + beatsPerBar - 1 + i * 0.25, duration: 0.25, velocity: vel(70 + i * 10, g) });
+        // seed指定時はフィルインにもバリエーション
+        const fillType = rand ? Math.floor(rand() * 3) : 0;
+        if (fillType === 1) {
+          // スネアクレッシェンド
+          for (let i = 0; i < 4; i++) {
+            notes.push({ pitch: GM_DRUMS.snare, start: base + beatsPerBar - 1 + i * 0.25, duration: 0.25, velocity: vel(60 + i * 15, g) });
+          }
+        } else if (fillType === 2) {
+          // キック+クラッシュ同期シンコペーション
+          notes.push({ pitch: GM_DRUMS.kick, start: base + beatsPerBar - 1, duration: 0.25, velocity: vel(95, g) });
+          notes.push({ pitch: GM_DRUMS.snare, start: base + beatsPerBar - 0.75, duration: 0.25, velocity: vel(85, g) });
+          notes.push({ pitch: GM_DRUMS.snare, start: base + beatsPerBar - 0.5, duration: 0.25, velocity: vel(90, g) });
+          notes.push({ pitch: GM_DRUMS.tomLow, start: base + beatsPerBar - 0.25, duration: 0.25, velocity: vel(95, g) });
+        } else {
+          for (let i = 0; i < 4; i++) {
+            const pitch = i < 2 ? GM_DRUMS.snare : i === 2 ? GM_DRUMS.tomHigh : GM_DRUMS.tomLow;
+            notes.push({ pitch, start: base + beatsPerBar - 1 + i * 0.25, duration: 0.25, velocity: vel(70 + i * 10, g) });
+          }
         }
       }
       if (b === 0) notes.push({ pitch: GM_DRUMS.crash, start: base, duration: 1, velocity: vel(85, g) });

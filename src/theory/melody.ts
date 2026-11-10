@@ -57,8 +57,14 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
   const ivs = ns.slice(1).map((n, i) => Math.abs(n.pitch - ns[i]!.pitch));
   const steps = ivs.filter((d) => d > 0 && d <= 2).length / ivs.length;
   const bigLeaps = ivs.filter((d) => d > 9).length / ivs.length;
+  const extremeLeaps = ivs.filter((d) => d > 14).length / ivs.length;
+  const expressiveLeaps = ivs.filter((d) => d >= 5 && d <= 12).length / ivs.length;
   const repeats = ivs.filter((d) => d === 0).length / ivs.length;
-  const contour = clamp01(band(steps, 0.35, 0.8, 0.35) - bigLeaps * 2 - Math.max(0, repeats - 0.3));
+  // 適度な跳躍(5-12半音)はフックとして歓迎(0.05-0.25)。極端な跳躍(>14)や過度な跳躍のみ減点
+  const leapScore = band(expressiveLeaps, 0.05, 0.25, 0.15) * 0.15;
+  const contour = clamp01(
+    band(steps, 0.35, 0.8, 0.35) + leapScore - Math.max(0, bigLeaps - 0.2) * 1.5 - extremeLeaps * 2 - Math.max(0, repeats - 0.3),
+  );
 
   // モチーフ: 同じリズム型の小節がどれだけあるか(全く無い/全部同じ はどちらも減点)
   const barRhythm = Array.from({ length: ctx.bars }, (_, b) =>
@@ -115,6 +121,17 @@ export function polishMelody(notes: Note[], ctx: MelodyContext): Note[] {
     const maxDur = next ? next.start - n.start : total - n.start;
     // 最後の音は伸ばし切らず、余韻を残して終わる
     const cap = i === lastIndex ? Math.min(maxDur, ctx.beatsPerBar / 2) : maxDur;
-    return { ...n, pitch, duration: Math.max(0.0625, Math.min(n.duration, cap)) };
+
+    // ベロシティの抑揚付け: 強拍・高音域を適度に立たせ、機械的な平坦さを解消
+    const baseVel = n.velocity ?? 85;
+    const inBar = n.start % ctx.beatsPerBar;
+    const isDownbeat = Math.abs(inBar) < 0.05;
+    const isMidbeat = Math.abs(inBar - ctx.beatsPerBar / 2) < 0.05;
+    let velMod = isDownbeat ? 6 : isMidbeat ? 3 : 0;
+    const pitchRel = (pitch - 60) / 24; // 60(C4)〜84(C6) 付近での相対高低
+    velMod += Math.round(Math.max(-4, Math.min(8, pitchRel * 8)));
+    const velocity = Math.max(40, Math.min(125, baseVel + velMod));
+
+    return { ...n, pitch, duration: Math.max(0.0625, Math.min(n.duration, cap)), velocity };
   });
 }

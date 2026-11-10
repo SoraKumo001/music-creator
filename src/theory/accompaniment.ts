@@ -61,9 +61,9 @@ export function generateComp(events: ChordEvent[], a: Arrangement, opts: { seed?
   const out: Note[] = [];
   const sorted = [...events].sort((x, y) => x.start - y.start).filter((e) => e.start < a.totalBeats);
   const voicings = voiceProgression(sorted.map((e) => parseChord(e.symbol)));
-  // seed指定時のみベロシティへ微小な人間味ノイズ (タイミングは変えない=テスト互換)
+  // seed指定時のみベロシティへ人間味ノイズ (タイミングは変えない=テスト互換)
   const rand = opts.seed !== undefined ? mulberry32((opts.seed ^ 0x9e3779b9) >>> 0) : null;
-  const human = () => (rand ? Math.floor(rand() * 7) - 3 : 0);
+  const human = () => (rand ? Math.floor(rand() * 11) - 5 : 0);
   let n = 0;
   for (const seg of toSegments(events, a.totalBeats, cutsOf(a))) {
     const sec = sectionAt(a.sections, seg.start);
@@ -176,7 +176,14 @@ export function generateBass(events: ChordEvent[], a: Arrangement, opts: { seed?
         hit(out, seg, 0, 1, root, v(92), g);
         hit(out, seg, 1, 1, fifth, v(78), gg(1));
         hit(out, seg, 2, 1, root, v(86), gg(2));
-        hit(out, seg, 3, 1, fifth, v(74), gg(3));
+        if (rand && seg.next && seg.len >= 4) {
+          const target = bassPitch(seg.next.bass);
+          const approach = target > fifth ? target - 1 : target + 1;
+          hit(out, seg, 3, 0.5, fifth, v(74), gg(3));
+          hit(out, seg, 3.5, 0.5, approach, v(80), gg(3.5));
+        } else {
+          hit(out, seg, 3, 1, fifth, v(74), gg(3));
+        }
         break;
       case "walking":
         for (let b = 0; b < seg.len; b++) {

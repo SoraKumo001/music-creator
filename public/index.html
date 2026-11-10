@@ -240,13 +240,14 @@ try {
   if (Number.isFinite(saved) && saved >= 0 && saved <= 100) volumePct = saved;
 } catch {}
 
-/** マスターバス: 音量 → コンプレッサー → リミッター → 出力 */
+/** マスターバス: 音量 → 空間系(リバーブ) → コンプレッサー → リミッター → 出力 */
 function createBus() {
   const gain = new Tone.Gain(gainFor(volumePct));
+  const reverb = new Tone.Freeverb({ roomSize: 0.62, dampening: 3500, wet: 0.2 });
   const comp = new Tone.Compressor({ threshold: -16, ratio: 3, attack: 0.002, release: 0.25 });
   const limiter = new Tone.Limiter(-1.5);
-  gain.chain(comp, limiter, Tone.Destination);
-  busNodes = [gain, comp, limiter];
+  gain.chain(reverb, comp, limiter, Tone.Destination);
+  busNodes = [gain, reverb, comp, limiter];
   return gain;
 }
 

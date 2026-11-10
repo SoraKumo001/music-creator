@@ -119,8 +119,10 @@ Rules:
 - Single-line melody (no simultaneous notes), mostly within MIDI 60-84.
 - On strong beats (first and middle beat of a bar) and on long notes, use tones of the current chord. Use scale tones as passing notes between them.
 - Build the melody from a short motif: state it, repeat it with variation, then contrast it in the next section. Reuse rhythms across bars.
-- Mix note lengths (e.g. eighths, quarters, dotted and held notes) and leave rests so phrases can breathe. Move mostly by step with occasional leaps.
-- Follow the section energy: sparse or silent in energy 1 sections, most active and highest in energy 3 sections.`;
+- Shape each phrase with a clear peak/climax. Mix mostly stepwise motion with occasional expressive leaps (e.g. 5th, octave) for emotional hooks.
+- Mix note lengths (e.g. eighths, quarters, dotted and held notes), use syncopation across beats, and leave rests so phrases can breathe.
+- Follow the section energy: sparse or silent in energy 1 sections, most active and highest in energy 3 sections.
+- Velocity dynamics: vary velocity naturally (65-110). Give peak and accented notes higher velocity (95-110) and softer touches (65-80) to pickup/passing notes. Do not output constant velocity.`;
 
 export type MelodyPromptOptions = {
   /** この範囲の小節だけ書く (0始まり、toBarは含まない)。長い曲の分割生成用 */
