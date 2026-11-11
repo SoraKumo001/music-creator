@@ -12,6 +12,8 @@
     "eval": "tsx scripts/eval-harmony.ts",
     "eval:diversity": "tsx scripts/eval-diversity.ts",
     "eval:complexity": "tsx scripts/eval-complexity.ts",
+    "eval:all": "npm run eval:corpus-fit && npm run eval:arrangement && npm run eval && npm run eval:diversity && npm run eval:complexity && npm run eval:dissonance",
+    "check:deterministic": "npm run typecheck && npm test && npm run eval:all",
     "analyze:corpus": "tsx scripts/analyze-corpus.ts",
     "compare:corpus": "tsx scripts/compare-corpus.ts",
     "eval:corpus-fit": "tsx scripts/eval-corpus-fit.ts",

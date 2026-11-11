@@ -188,12 +188,22 @@ LLM が明示に反したモードを返した場合は作り直させ、それ�
 
 ## 6. 改善ループの回し方
 
-1. `npm run analyze:corpus -- --dir out/corpus --no-fetch` で現状を記録
+1. `npm run analyze:corpus -- --dir out/corpus --no-fetch --split-mode` で現状を記録
 2. `npm run eval:corpus-fit` でベースライン（現フィクスチャ平均）を確認
 3. プロンプト・ルール・重みを変更
 4. `npm run eval:corpus-fit -- --rules-ab` で決定論的な効果を確認（LLM不要）
-5. `npm run eval:corpus-fit -- --live` で実生成を測定（`.dev.vars` が必要）
-6. 既存の和声評価（`npm run eval`）・複雑さ評価（`npm run eval:complexity`）を悪化させていないことも確認
+5. `npm run eval:arrangement` で編曲だけの効果を確認（LLM不要・48曲/条件）
+6. `npm run eval:corpus-fit -- --live` で実生成を測定（`.dev.vars` が必要）
+7. 既存の和声評価（`npm run eval`）・複雑さ評価（`npm run eval:complexity`）を悪化させていないことも確認
+
+### 定常チェック（LLM不要・数秒）
+
+```bash
+npm run eval:all            # corpus-fit / arrangement / harmony / diversity / complexity / dissonance
+npm run check:deterministic # typecheck + test + eval:all をまとめて実行
+```
+
+`eval:all` はすべて LLM を呼ばないため、プロバイダの混雑に左右されずに回帰を検出できます。
 
 ### 実測結果（サンプル40曲のプロファイル）
 
