@@ -98,6 +98,12 @@ describe("aggregateFeatures", () => {
     expect(profile.drumByEnergy.high.sections).toBeGreaterThan(0);
     expect(profile.drumByEnergy.low.medianHitsPerBar).toBeGreaterThan(0);
     expect(profile.insights.join(" ")).toContain("by section density");
+    // セクション密度の弧: fixture は 20→90 と右肩上がり
+    expect(profile.form.densityArc.risingShare).toBe(1);
+    expect(profile.form.densityArc.medianPeakPosition).toBe(1);
+    expect(profile.form.densityArc.medianFirstRatio).toBeLessThan(1.5);
+    expect(profile.form.densityArc.medianLastRatio).toBeGreaterThan(1);
+    expect(profile.insights.join(" ")).toContain("energy arc");
     // フィル統計
     expect(profile.rhythm.fillBarShare).toBeGreaterThan(0);
     expect(profile.rhythm.fillPhraseEndShare).toBeGreaterThan(0);

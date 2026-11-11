@@ -99,6 +99,20 @@ export type CorpusProfile = {
     sectionBarPercentiles: [number, number, number];
     /** 1曲あたりのセクション数の中央値 */
     medianSections: number;
+    /**
+     * セクション密度の推移 (energy の弧)。
+     * ratio は曲内平均密度に対する比。
+     */
+    densityArc: {
+      medianFirstRatio: number;
+      medianLastRatio: number;
+      /** 最大密度のセクション位置 (0=先頭, 1=末尾) */
+      medianPeakPosition: number;
+      /** 後半の方が密度が高い曲の割合 */
+      risingShare: number;
+      /** 後半の方が密度が低い曲の割合 */
+      fallingShare: number;
+    };
   };
   /** 生成プロンプトにそのまま差し込める知見 (自動生成) */
   insights: string[];
@@ -320,6 +334,32 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
     };
   }
 
+  // ---- セクション密度の弧 (energy の推移) ----
+  const arcs = features
+    .map((f) => {
+      const dens = f.sectionStats.map((s) => s.density).filter((d) => d > 0);
+      if (dens.length < 2) return null;
+      const meanDensity = dens.reduce((a, b) => a + b, 0) / dens.length;
+      const maxIdx = dens.indexOf(Math.max(...dens));
+      const first = dens[0]!;
+      const last = dens[dens.length - 1]!;
+      return {
+        firstRatio: first / Math.max(1e-6, meanDensity),
+        lastRatio: last / Math.max(1e-6, meanDensity),
+        peak: maxIdx / (dens.length - 1),
+        rising: last > first * 1.05,
+        falling: last < first * 0.95,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+  const densityArc = {
+    medianFirstRatio: round(median(arcs.map((a) => a.firstRatio)), 2),
+    medianLastRatio: round(median(arcs.map((a) => a.lastRatio)), 2),
+    medianPeakPosition: round(median(arcs.map((a) => a.peak)), 2),
+    risingShare: round(arcs.filter((a) => a.rising).length / Math.max(1, arcs.length), 3),
+    fallingShare: round(arcs.filter((a) => a.falling).length / Math.max(1, arcs.length), 3),
+  };
+
   const profile: CorpusProfile = {
     version: CORPUS_PROFILE_VERSION,
     generatedAt: new Date().toISOString(),
@@ -401,6 +441,7 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
         round(quantile(sectionLengths, 0.9), 1),
       ],
       medianSections: round(median(sectionsPerFile), 1),
+      densityArc,
     },
     insights: [],
   };
@@ -511,6 +552,14 @@ export function buildInsights(p: CorpusProfile): string[] {
     out.push(`Common 3-chord cells: ${p.harmony.topProgressions.slice(0, 4).map((b) => b.numerals.replace(/>/g, "–")).join(" / ")}.`);
   }
   out.push(`Form: sections usually ${p.form.sectionBarPercentiles[0]}-${p.form.sectionBarPercentiles[2]} bars (median ${p.form.medianSectionBars}); about ${p.form.medianSections} sections per piece.`);
+  const arc = p.form.densityArc;
+  if (arc.medianFirstRatio > 0) {
+    out.push(
+      `Section energy arc: the first section runs at about ${pct(arc.medianFirstRatio)} of the average density and the last at ${pct(arc.medianLastRatio)}; ` +
+        `the densest section sits around ${pct(arc.medianPeakPosition)} through the piece ` +
+        `(rising ${pct(arc.risingShare)} / falling ${pct(arc.fallingShare)}).`,
+    );
+  }
   return out;
 }
 

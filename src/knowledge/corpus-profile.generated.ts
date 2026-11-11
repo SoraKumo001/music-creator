@@ -5,7 +5,7 @@ import type { CorpusProfile } from "../analyze/corpus";
 
 export const CORPUS_PROFILE: CorpusProfile | null = {
   "version": 3,
-  "generatedAt": "2026-11-11T05:16:35.002Z",
+  "generatedAt": "2026-11-11T05:17:53.049Z",
   "source": {
     "label": "midi-corpus",
     "files": 40,
@@ -344,7 +344,14 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
       4,
       12
     ],
-    "medianSections": 7
+    "medianSections": 7,
+    "densityArc": {
+      "medianFirstRatio": 0.94,
+      "medianLastRatio": 0.89,
+      "medianPeakPosition": 0.5,
+      "risingShare": 0.424,
+      "fallingShare": 0.485
+    }
   },
   "insights": [
     "Tempo: the tempo metadata is uniform at 125 BPM across this corpus (authoring convention), so do not use tempo as a style prior — vary tempo to fit the request.",
@@ -362,14 +369,15 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
     "Typical registers: synthLead ~67, guitar ~63.5, bass ~36.",
     "Common moves (roman, from→to): Isus4→i7 1%, i7→VImaj7 1%.",
     "Common 3-chord cells: Isus4–I–I / Isus4–i7–Isus4 / Vsus4–Isus4–Isus4 / Vsus4–Vsus4–V7/V.",
-    "Form: sections usually 2-12 bars (median 4); about 7 sections per piece."
+    "Form: sections usually 2-12 bars (median 4); about 7 sections per piece.",
+    "Section energy arc: the first section runs at about 94% of the average density and the last at 89%; the densest section sits around 50% through the piece (rising 42% / falling 49%)."
   ]
 };
 
 export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfile } | null = {
   "major": {
     "version": 3,
-    "generatedAt": "2026-11-11T05:16:35.007Z",
+    "generatedAt": "2026-11-11T05:17:53.059Z",
     "source": {
       "label": "midi-corpus-major",
       "files": 21,
@@ -706,7 +714,14 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
         4,
         12.6
       ],
-      "medianSections": 7
+      "medianSections": 7,
+      "densityArc": {
+        "medianFirstRatio": 0.95,
+        "medianLastRatio": 0.94,
+        "medianPeakPosition": 0.56,
+        "risingShare": 0.444,
+        "fallingShare": 0.444
+      }
     },
     "insights": [
       "Tempo: the tempo metadata is uniform at 125 BPM across this corpus (authoring convention), so do not use tempo as a style prior — vary tempo to fit the request.",
@@ -724,12 +739,13 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
       "Typical registers: synthLead ~69, bass ~36, guitar ~69.",
       "Common moves (roman, from→to): Isus4→I 1%, Isus4→i7 1%, Isus4→V7/IV 1%.",
       "Common 3-chord cells: Isus4–I–I / Vsus4–Isus4–Isus4 / Isus4–Isus4–i7 / I–V7/IV–vi7.",
-      "Form: sections usually 2-12.6 bars (median 4); about 7 sections per piece."
+      "Form: sections usually 2-12.6 bars (median 4); about 7 sections per piece.",
+      "Section energy arc: the first section runs at about 95% of the average density and the last at 94%; the densest section sits around 56% through the piece (rising 44% / falling 44%)."
     ]
   },
   "minor": {
     "version": 3,
-    "generatedAt": "2026-11-11T05:16:35.009Z",
+    "generatedAt": "2026-11-11T05:17:53.063Z",
     "source": {
       "label": "midi-corpus-minor",
       "files": 19,
@@ -1060,7 +1076,14 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
         4,
         10.1
       ],
-      "medianSections": 7
+      "medianSections": 7,
+      "densityArc": {
+        "medianFirstRatio": 0.82,
+        "medianLastRatio": 0.87,
+        "medianPeakPosition": 0.5,
+        "risingShare": 0.4,
+        "fallingShare": 0.533
+      }
     },
     "insights": [
       "Tempo: the tempo metadata is uniform at 125 BPM across this corpus (authoring convention), so do not use tempo as a style prior — vary tempo to fit the request.",
@@ -1078,7 +1101,8 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
       "Typical registers: synthLead ~62, guitar ~56.5, bass ~34.",
       "Common moves (roman, from→to): i7→VImaj7 2%, Imaj7→VImaj7 1%, Isus4→i 1%, VImaj7→i7 1%, iv7→IVsus4 1%.",
       "Common 3-chord cells: V7/VI–V7/VI–III / III–V7/VI–i7 / Vsus4–V–Vsus4 / i7–i7–VImaj7.",
-      "Form: sections usually 2-10.1 bars (median 4); about 7 sections per piece."
+      "Form: sections usually 2-10.1 bars (median 4); about 7 sections per piece.",
+      "Section energy arc: the first section runs at about 82% of the average density and the last at 87%; the densest section sits around 50% through the piece (rising 40% / falling 53%)."
     ]
   }
 };
