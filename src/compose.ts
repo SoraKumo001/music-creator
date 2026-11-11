@@ -59,6 +59,7 @@ import {
   corpusProfile,
   corpusRuleHints,
   isCalmPrompt,
+  melodyTargetsForKey,
 } from "./knowledge/corpus";
 import { applyWebHints } from "./knowledge/web-knowledge";
 import { validatePlan, type Issue } from "./theory/validate";
@@ -689,7 +690,7 @@ export async function compose(
             ctx,
           );
           if (notes.length >= 2)
-            cands.push({ notes, score: scoreMelody(notes, ctx) });
+            cands.push({ notes, score: scoreMelody(notes, ctx, melodyTargetsForKey(finalPlan.key)) });
         } catch (e) {
           lastError = e instanceof Error ? e.message : String(e);
         }
@@ -769,7 +770,7 @@ export async function compose(
             ctx,
           );
           if (notes.length < 1) continue;
-          const sc = scoreMelody(notes, ctx);
+          const sc = scoreMelody(notes, ctx, melodyTargetsForKey(finalPlan.key));
           if (!best || sc.total > best.score.total) best = { notes, score: sc };
         } catch {
           /* 対旋律の失敗は無視 (主旋律だけで成立させる) */

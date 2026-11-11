@@ -26,8 +26,31 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const band = (x: number, lo: number, hi: number, slack: number) =>
   x < lo ? clamp01(1 - (lo - x) / slack) : x > hi ? clamp01(1 - (x - hi) / slack) : 1;
 
+/**
+ * メロディ候補の採点に使う統計的な目標値。
+ * 省略時は従来の手調整値、コーパスがある場合はプロファイル由来の値を使う。
+ */
+export type MelodyTargets = {
+  /** 1小節あたり音符数 */
+  notesPerBar: number;
+  /** 音域 (半音) */
+  range: number;
+  /** メロディの中央音域 (MIDI) */
+  medianPitch: number;
+  /** 順次進行 (1-2半音) の割合 */
+  stepwiseShare: number;
+};
+
+/** 従来の手調整値 (コーパス未生成時のフォールバック) */
+export const DEFAULT_MELODY_TARGETS: MelodyTargets = {
+  notesPerBar: 5,
+  range: 12,
+  medianPitch: 72,
+  stepwiseShare: 0.55,
+};
+
 /** メロディ候補をルールで採点する(0-100)。高いほど「曲として自然」 */
-export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
+export function scoreMelody(notes: Note[], ctx: MelodyContext, targets: MelodyTargets = DEFAULT_MELODY_TARGETS): MelodyScore {
   const total = ctx.bars * ctx.beatsPerBar;
   const ns = [...notes].filter((n) => n.start < total).sort((a, b) => a.start - b.start);
   if (ns.length < 2) return { total: 0, parts: {} };
@@ -46,14 +69,24 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
 
   const pitches = ns.map((n) => n.pitch);
   const span = Math.max(...pitches) - Math.min(...pitches);
-  const range = band(span, 7, 17, 8) * band(Math.min(...pitches), 55, 80, 8) * band(Math.max(...pitches), 64, 91, 8);
+  const medianPitch = [...pitches].sort((a, b) => a - b)[Math.floor(pitches.length / 2)]!;
+  // コーパスの melodyRange / melody.medianPitch に合わせて音域・音域中心を評価する
+  const range =
+    band(span, targets.range * 0.7, targets.range * 1.3, 8) *
+    band(medianPitch, targets.medianPitch - 12, targets.medianPitch + 10, 8) *
+    band(Math.max(...pitches), targets.medianPitch - 4, targets.medianPitch + 18, 8);
 
   const durs = new Set(ns.map((n) => Math.round(n.duration * 4)));
   const rhythm = band(durs.size, 3, 6, 2);
 
   const perBar = ns.length / ctx.bars;
-  // 1小節あたり1.5〜8.5音を好ましい範囲とし、ゆったりした歌メロや休符も許容する
-  const density = band(perBar, 1.5, 8.5, 2.5);
+  // コーパスの melodyNotesPerBar を中心に許容幅を持たせる
+  const density = band(
+    perBar,
+    Math.max(1.5, targets.notesPerBar * 0.45),
+    targets.notesPerBar * 1.2,
+    Math.max(2, targets.notesPerBar * 0.35),
+  );
 
   const ivs = ns.slice(1).map((n, i) => Math.abs(n.pitch - ns[i]!.pitch));
   const steps = ivs.filter((d) => d > 0 && d <= 2).length / ivs.length;
@@ -64,7 +97,16 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext): MelodyScore {
   // 適度な跳躍(5-12半音)はフックとして歓迎(0.05-0.25)。極端な跳躍(>14)や過度な跳躍のみ減点
   const leapScore = band(expressiveLeaps, 0.05, 0.25, 0.15) * 0.15;
   const contour = clamp01(
-    band(steps, 0.35, 0.8, 0.35) + leapScore - Math.max(0, bigLeaps - 0.2) * 1.5 - extremeLeaps * 2 - Math.max(0, repeats - 0.3),
+    band(
+      steps,
+      Math.max(0.2, targets.stepwiseShare - 0.15),
+      Math.min(0.9, targets.stepwiseShare + 0.2),
+      0.35,
+    ) +
+      leapScore -
+      Math.max(0, bigLeaps - 0.2) * 1.5 -
+      extremeLeaps * 2 -
+      Math.max(0, repeats - 0.3),
   );
 
   // フレーズの呼吸(休符): 1拍前後の休みが適度にあるか(全小節ぎっしり詰め込まれた棒演奏は減点)

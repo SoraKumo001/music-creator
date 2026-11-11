@@ -10,6 +10,7 @@ import type { Plan } from "../plan";
 import { COMP_STYLES, BASS_STYLES } from "../theory/accompaniment";
 import { drumPatternHitsPerBar, drumPatternPitchShares, DRUM_PATTERN_NAMES } from "../theory/drums";
 import { parseKeyName } from "../theory/key";
+import type { MelodyTargets } from "../theory/melody";
 import { corpusStyleFit, normalizedStyleScores } from "./styleMatch";
 
 export const corpusProfile: CorpusProfile | null = CORPUS_PROFILE;
@@ -246,9 +247,28 @@ export type CorpusHintOptions = {
 
 /** 既定: コーパス忠実度を優先し、役割によるスパース化は opt-in (roleAware:true) */
 
-/** 旋律生成プロンプト用: コーパスの旋律の鳴り方を短く渡す (統計のみ) */
-export function corpusMelodyGuidance(mode?: "major" | "minor"): string {
+/**
+ * メロディ候補の採点目標 (コーパス統計から)。プロファイルが無ければ undefined
+ * (= scoreMelody の手調整フォールバックを使う)。
+ */
+export function melodyTargets(mode?: "major" | "minor"): MelodyTargets | undefined {
   const p = mode ? corpusProfileForMode(mode) : corpusProfile;
+  if (!p) return undefined;
+  return {
+    notesPerBar: p.rhythm.medianMelodyNotesPerBar,
+    range: p.rhythm.medianMelodyRange,
+    medianPitch: p.melody.medianPitch,
+    stepwiseShare: p.melody.stepwiseShare,
+  };
+}
+
+/** 調名から採点目標を引く (プランに調性が入っている場合の便宜関数) */
+export function melodyTargetsForKey(key: string): MelodyTargets | undefined {
+  return melodyTargets(parseKeyName(key).mode);
+}
+
+/** 旋律生成プロンプト用: コーパスの旋律の鳴り方を短く渡す (統計のみ) */
+export function corpusMelodyGuidance(mode?: "major" | "minor"): string {  const p = mode ? corpusProfileForMode(mode) : corpusProfile;
   if (!p) return "";
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   return (

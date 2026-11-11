@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { aggregateFeatures, drumName, type CorpusProfile } from "../src/analyze/corpus";
 import { evaluateCorpusFit } from "../src/eval/corpusFit";
 import type { MidiFeatures } from "../src/analyze/features";
-import { applyCorpusHints, corpusProfile, corpusProfileForMode, corpusRuleHints } from "../src/knowledge/corpus";
+import { applyCorpusHints, corpusProfile, corpusProfileForMode, corpusRuleHints, melodyTargets } from "../src/knowledge/corpus";
 import { PlanSchema, resolveSections } from "../src/plan";
 import { planMessages } from "../src/prompt";
 import { assemble } from "../src/compose";
 import { extractMidiLinks } from "../src/analyze/links";
 import { drumPatternHitsPerBar } from "../src/theory/drums";
+import type { Note } from "../src/score";
 
 /** テスト用の最小フィーチャを作る */
 function feature(overrides: Partial<MidiFeatures> = {}): MidiFeatures {
@@ -155,6 +156,20 @@ describe("evaluateCorpusFit", () => {
     const rich = evaluateCorpusFit(plan, score, profile, { complexity: "rich" });
     expect(rich.parts.borrowed).toBeGreaterThanOrEqual(strict.parts.borrowed);
   });
+
+  it("scores a corpus-like melody higher than a sparse one", () => {
+    const wide: Note[] = Array.from({ length: 64 }, (_, i) => ({
+      pitch: 65 + (i % 16),
+      start: i * 0.5,
+      duration: 0.45,
+      velocity: 90,
+    }));
+    const sparse: Note[] = [{ pitch: 72, start: 0, duration: 3, velocity: 90 }];
+    const wideFit = evaluateCorpusFit(plan, assemble(plan, sections, wide, 8), profile);
+    const sparseFit = evaluateCorpusFit(plan, assemble(plan, sections, sparse, 8), profile);
+    expect(wideFit.parts.melody).toBeGreaterThan(sparseFit.parts.melody);
+    expect(wideFit.parts.melody).toBeGreaterThan(0.5);
+  });
 });
 
 describe("generated profile", () => {
@@ -254,6 +269,20 @@ describe("generated profile", () => {
     if (!hints) return;
     expect(applyCorpusHints(plan).sections[0]!.comp).toBe(hints.compStyles[0]);
     expect(applyCorpusHints(plan, { roleAware: true }).sections[0]!.comp).toBe("pad");
+  });
+
+  it("derives melody scoring targets from the profile", () => {
+    const targets = melodyTargets();
+    if (!corpusProfile) {
+      expect(targets).toBeUndefined();
+      return;
+    }
+    expect(targets).not.toBeUndefined();
+    expect(targets!.notesPerBar).toBeGreaterThan(0);
+    expect(targets!.range).toBeGreaterThan(0);
+    expect(targets!.medianPitch).toBeGreaterThan(50);
+    expect(targets!.stepwiseShare).toBeGreaterThan(0);
+    expect(targets!.range).toBe(corpusProfile.rhythm.medianMelodyRange);
   });
 
   it("applies hints only to fields left at schema defaults", () => {

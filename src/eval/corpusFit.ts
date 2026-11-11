@@ -28,6 +28,8 @@ export type CorpusFitParts = {
   drumDensity: number;
   /** セクション energy ごとの音数密度 (オンセット/小節) の近さ */
   sectionDensity: number;
+  /** メロディの密度・音域・音域中心・順次進行がコーパスの傾向に近いか */
+  melody: number;
   harmonicRhythm: number;
   chordQualities: number;
   borrowed: number;
@@ -246,6 +248,42 @@ function harmonyFits(plan: Plan, p: CorpusProfile, mode: "simple" | "standard" |
   return { harmonicRhythm, chordQualities, borrowed: borrowedFit, form, notes };
 }
 
+/** メロディの密度・音域・音域中心・順次進行がコーパスの傾向に近いか */
+function melodyFit(score: Score, plan: Plan, p: CorpusProfile): number {
+  const melody = score.tracks.find(
+    (t) => t.channel !== 9 && t.notes.length > 0 && (t.name === plan.melodyName || t.program === plan.melodyProgram),
+  );
+  if (!melody || melody.notes.length < 2) return 0.5;
+  const beatsPerBar = beatsPerBarOf(plan);
+  const sorted = [...melody.notes].sort((a, b) => a.start - b.start);
+  const end = Math.max(...sorted.map((n) => n.start + n.duration));
+  const bars = Math.max(1, Math.ceil(end / beatsPerBar));
+  const notesPerBar = sorted.length / bars;
+  const pitches = sorted.map((n) => n.pitch);
+  const range = Math.max(...pitches) - Math.min(...pitches);
+  const median = [...pitches].sort((a, b) => a - b)[Math.floor(pitches.length / 2)]!;
+  let moves = 0;
+  let steps = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const d = Math.abs(sorted[i]!.pitch - sorted[i - 1]!.pitch);
+    if (d > 0) {
+      moves++;
+      if (d <= 2) steps++;
+    }
+  }
+  const stepwise = moves === 0 ? 0 : steps / moves;
+  const target = p.rhythm;
+  const tm = p.melody;
+  const fit = (actual: number, t: number, frac: number) =>
+    t <= 0 ? 1 : toleranceFit(actual, t, t * frac, t * 1.25);
+  return (
+    fit(notesPerBar, target.medianMelodyNotesPerBar, 0.35) +
+    fit(range, target.medianMelodyRange, 0.3) +
+    fit(median, tm.medianPitch, 0.15) +
+    toleranceFit(stepwise, tm.stepwiseShare, 0.15, 0.5)
+  ) / 4;
+}
+
 export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfile, opts: CorpusFitOptions = {}): CorpusFitResult {
   const mode = opts.complexity ?? "standard";
   const harmony = harmonyFits(plan, profile, mode);
@@ -260,6 +298,7 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
     drums: drumFit(score, profile),
     drumDensity: drumDensityFit(score, plan, profile),
     sectionDensity: sectionDensityFit(score, plan, profile),
+    melody: melodyFit(score, plan, profile),
     harmonicRhythm: harmony.harmonicRhythm,
     chordQualities: harmony.chordQualities,
     borrowed: harmony.borrowed,
@@ -267,7 +306,7 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
   };
   const weights: Record<keyof CorpusFitParts, number> = {
     tempo: tempoIsInformative ? 12 : 0, mode: 8, meter: 6, instruments: 12, rhythm: 12, drums: 8, drumDensity: 6,
-    sectionDensity: 6, harmonicRhythm: 12, chordQualities: 10, borrowed: 6, form: 8,
+    sectionDensity: 6, melody: 6, harmonicRhythm: 12, chordQualities: 10, borrowed: 6, form: 8,
     ...opts.weights,
   };
   let sum = 0;

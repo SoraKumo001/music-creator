@@ -107,7 +107,11 @@ for (const file of files) {
       const sections = resolveSections(hinted, bars, beatsPerBar);
       const melody = melodyFor(hinted, bars);
       const score = assemble(hinted, sections, melody, bars, { seed, texture: true, arp: true });
-      const fit = evaluateCorpusFit(hinted, score, corpusProfile, { complexity: "standard" });
+      const fit = evaluateCorpusFit(hinted, score, corpusProfile, {
+        complexity: "standard",
+        // 評価用の旋律は決定的な合成音なので、旋律項目は全条件で同じ。比較の妨げにならないよう重み0
+        weights: { melody: 0 },
+      });
       rows.push({
         name: fixture.name,
         variant: variant.name,
