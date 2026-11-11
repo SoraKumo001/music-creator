@@ -56,6 +56,7 @@ import { reduceDissonances } from "./theory/dissonance";
 import { reharmonizePlan, type ReharmSuggestion } from "./theory/reharmonize";
 import {
   applyCorpusHints,
+  corpusProfile,
   corpusRuleHints,
   isCalmPrompt,
 } from "./knowledge/corpus";
@@ -544,7 +545,11 @@ export async function compose(
   // 和声の色付け (借用・二次ドミナント・sus4)。standard以上で、コーパス統計を尊重する
   if (complexity !== "simple" && opts.corpus !== false) {
     const strength = complexity === "rich" ? 1 : 0.8;
-    const colored = colorPlan(plan, bars, seed, { strength });
+    // sus4 の割合は参照コーパスの実測 (コード枠に占める sus の比率) に合わせる
+    const susProbability = corpusProfile
+      ? Math.max(0.05, Math.min(0.5, corpusProfile.harmony.susShare))
+      : undefined;
+    const colored = colorPlan(plan, bars, seed, { strength, susProbability });
     plan = colored.plan;
   }
   // Web知識カードのスタイルタグによる既定値補正 (コーパス補正より先に適用して優先させる)
@@ -659,6 +664,7 @@ export async function compose(
           .slice(-4)
           .map((n) => ({ pitch: n.pitch, start: n.start })),
         themeHints,
+        corpus: useCorpusPrompt,
       },
     );
     let cands: { notes: Note[]; score: MelodyScore }[] = [];
@@ -742,6 +748,7 @@ export async function compose(
           fromBar: b0,
           toBar: b1,
           counterTo: inRange,
+          corpus: useCorpusPrompt,
         },
       );
       const results = await Promise.allSettled(

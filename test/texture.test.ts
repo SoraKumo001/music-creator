@@ -287,6 +287,29 @@ describe("colorPlan", () => {
         expect(symbol).toBe(original);
     }
   });
+
+  it("uses the corpus-derived sus probability", () => {
+    const plan = mk([
+      [0, "C"],
+      [8, "Am"],
+      [16, "F"],
+      [24, "G"],
+      [32, "Am"],
+      [40, "F"],
+      [48, "G"],
+      [56, "C"],
+    ]);
+    const countSus = (susProbability: number) => {
+      let count = 0;
+      for (let seed = 1; seed <= 40; seed++) {
+        const { plan: colored } = colorPlan(plan, 16, seed, { strength: 1, maxChanges: 8, susProbability });
+        count += colored.chords.filter(([, symbol]) => symbol.includes("sus")).length;
+      }
+      return count;
+    };
+    // 参照コーパスの sus 率 (約26%) と旧値 (35%) の差が実際に出力へ出る
+    expect(countSus(0.5)).toBeGreaterThan(countSus(0.05) * 2);
+  });
 });
 
 describe("texture does not affect harmony generation", () => {

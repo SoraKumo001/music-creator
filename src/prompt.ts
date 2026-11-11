@@ -1,5 +1,5 @@
 import { pickGenreCards } from "./knowledge/genres";
-import { corpusGuidance, corpusProfile } from "./knowledge/corpus";
+import { corpusGuidance, corpusMelodyGuidance, corpusProfile } from "./knowledge/corpus";
 import { webKnowledgeGuidance } from "./knowledge/web-knowledge";
 import {
   PROGRESSIONS,
@@ -313,6 +313,8 @@ export type MelodyPromptOptions = {
   }[];
   /** 対旋律用: 主旋律のこの範囲の音 (pitch,start)。指定時は対旋律の指示に切替 */
   counterTo?: { pitch: number; start: number; duration: number }[];
+  /** false ならコーパス由来の旋律の傾向を注入しない (corpus:false のA/B用) */
+  corpus?: boolean;
 };
 
 export function melodyMessages(
@@ -399,7 +401,7 @@ export function melodyMessages(
   return [
     {
       role: "system",
-      content: MELODY_SYSTEM + "\n" + endingRule + ensembleRule,
+      content: MELODY_SYSTEM + "\n" + endingRule + ensembleRule + (opts.corpus === false ? "" : corpusMelodyGuidance()),
     },
     { role: "user", content: user },
   ];

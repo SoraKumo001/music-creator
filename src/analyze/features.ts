@@ -75,11 +75,47 @@ export type MidiFeatures = {
   melodyNotesPerBar: number;
   /** 旋律の開始位置が拍頭からずれている割合 */
   offbeatRatio: number;
+  /** ベース声部の統計 (GM 32-39。無ければ低音域) */
+  bass: {
+    notesPerBar: number;
+    medianPitch: number;
+    /** 連続するベース音の音程ヒストグラム (半音, mod 12, 合計1) */
+    motionHistogram: number[];
+    /** 完全4度/5度 (5,7半音) の割合 */
+    fifthShare: number;
+    /** 順次進行 (1,2半音) の割合 */
+    stepShare: number;
+    /** 跳躍 (8半音以上) の割合 */
+    leapShare: number;
+  };
+  /** 旋律 (トップライン) の質感 */
+  melody: {
+    medianPitch: number;
+    /** 順次進行 (1,2半音) の割合 */
+    stepwiseShare: number;
+    /** フレーズの切れ目 (0.5拍以上のギャップ) の割合 */
+    restRatio: number;
+    /** 音価の中央値 (16分単位) */
+    medianDuration16: number;
+  };
+  /** sus4/sus2 の割合 (コード枠に占める) */
+  susShare: number;
+  /** 7th 系 (maj7/min7/7/dim7等) の割合 */
+  seventhShare: number;
+  /** 楽器ファミリー別の出現数・密度・音域 */
+  familyStats: Record<string, { notes: number; notesPerBar: number; medianPitch: number }>;
 };
 
 const round = (x: number, digits = 3) => {
   const f = 10 ** digits;
   return Math.round(x * f) / f;
+};
+
+const median = (xs: number[]): number => {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 };
 
 /**
@@ -492,6 +528,67 @@ export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOpt
 
   const sections = detectSections(notes, barTicks, bars, startTick);
 
+  // ---- ベース声部 (GM 32-39。無ければ低音域から代用) ----
+  const nonDrum = notes.filter((n) => n.channel !== 9);
+  const bassProgramNotes = nonDrum.filter((n) => n.program >= 32 && n.program <= 39);
+  const bassSource = bassProgramNotes.length >= 4 ? bassProgramNotes : nonDrum.filter((n) => n.pitch < 52);
+  const bassSorted = [...bassSource].sort((a, b) => a.tick - b.tick || a.pitch - b.pitch);
+  const bassLine: ParsedNote[] = [];
+  for (const n of bassSorted) {
+    if (bassLine.length === 0 || n.tick > bassLine[bassLine.length - 1]!.tick) bassLine.push(n);
+  }
+  const motion = new Array(12).fill(0);
+  for (let i = 1; i < bassLine.length; i++) {
+    motion[(((bassLine[i]!.pitch - bassLine[i - 1]!.pitch) % 12) + 12) % 12] += 1;
+  }
+  const motionTotal = motion.reduce((a, b) => a + b, 0);
+  const shareOfMotion = (bins: number[]) =>
+    motionTotal === 0 ? 0 : round(bins.reduce((a, b) => a + (motion[b] ?? 0), 0) / motionTotal, 3);
+  const bassPitches = bassLine.map((n) => n.pitch);
+  const bassStats = {
+    notesPerBar: round(bassLine.length / bars, 2),
+    medianPitch: round(median(bassPitches), 1),
+    motionHistogram: normalizeHistogram(motion),
+    fifthShare: shareOfMotion([5, 7]),
+    stepShare: shareOfMotion([1, 2]),
+    leapShare: motionTotal === 0 ? 0 : round(motion.slice(8).reduce((a, b) => a + b, 0) / motionTotal, 3),
+  };
+
+  // ---- 旋律の質感 (トップライン) ----
+  const gaps: number[] = [];
+  for (let i = 1; i < top.length; i++) {
+    const gapBeats = (top[i]!.tick - (top[i - 1]!.tick + top[i - 1]!.durationTicks)) / beatTicks;
+    if (gapBeats > 0.05) gaps.push(gapBeats);
+  }
+  const restRatio = top.length === 0 ? 0 : round(gaps.filter((g) => g >= 0.5).length / top.length, 3);
+  const intervalTotal = intervals.reduce((a, b) => a + b, 0);
+  const melodyStats = {
+    medianPitch: round(median(pitches), 1),
+    stepwiseShare: intervalTotal === 0 ? 0 : round((intervals[1]! + intervals[2]!) / intervalTotal, 3),
+    restRatio,
+    medianDuration16: round(median(top.map((n) => (n.durationTicks / beatTicks) * 4)), 1),
+  };
+
+  // ---- 和声の色 (sus / 7th) ----
+  const qualityTotal = Object.values(harmony.qualities).reduce((a, b) => a + b, 0);
+  const qualityOf = (names: string[]) =>
+    qualityTotal === 0 ? 0 : round(names.reduce((a, q) => a + (harmony.qualities[q] ?? 0), 0) / qualityTotal, 3);
+
+  // ---- 楽器ファミリー別の密度・音域 ----
+  const familyNotes = new Map<string, number[]>();
+  for (const n of nonDrum) {
+    const fam = programFamily(n.program);
+    (familyNotes.get(fam) ?? familyNotes.set(fam, []).get(fam)!).push(n.pitch);
+  }
+  const familyStats: Record<string, { notes: number; notesPerBar: number; medianPitch: number }> = {};
+  for (const [fam, pitchesOfFamily] of familyNotes) {
+    familyStats[fam] = {
+      notes: pitchesOfFamily.length,
+      notesPerBar: round(pitchesOfFamily.length / bars, 2),
+      medianPitch: round(median(pitchesOfFamily), 1),
+    };
+  }
+
   return {
     name,
     durationSec,
@@ -529,6 +626,11 @@ export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOpt
     melodyRange,
     melodyNotesPerBar: round(top.length / bars, 2),
     offbeatRatio: top.length === 0 ? 0 : round(offbeat / top.length, 3),
+    bass: bassStats,
+    melody: melodyStats,
+    susShare: qualityOf(["sus4", "sus2"]),
+    seventhShare: qualityOf(["maj7", "m7", "7", "dim7", "m7b5"]),
+    familyStats,
   };
 }
 

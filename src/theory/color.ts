@@ -14,6 +14,11 @@ export type ColorOptions = {
   /** 全体の強さ 0-1 (0で無効) */
   strength?: number;
   maxChanges?: number;
+  /**
+   * sus4 化する確率 (0-1)。省略時 0.35。
+   * 参照コーパスの sus 出現率 (profile.harmony.susShare) を渡すと統計に寄る。
+   */
+  susProbability?: number;
 };
 
 export type ColorResult = { plan: Plan; changes: number; reverted: boolean };
@@ -24,6 +29,8 @@ const isPlainTriad = (symbol: string) => /^[A-G][#b]?$/.test(symbol);
 export function colorPlan(plan: Plan, bars: number, seed: number, opts: ColorOptions = {}): ColorResult {
   const strength = Math.max(0, Math.min(1, opts.strength ?? 1));
   if (strength <= 0) return { plan, changes: 0, reverted: false };
+  const susP = Math.max(0.05, Math.min(0.5, opts.susProbability ?? 0.35));
+  const susThreshold = susP * strength;
   const beatsPerBar = (plan.timeSignature[0] * 4) / plan.timeSignature[1];
   const totalBeats = bars * beatsPerBar;
   const key = parseKeyName(plan.key);
@@ -49,7 +56,7 @@ export function colorPlan(plan: Plan, bars: number, seed: number, opts: ColorOpt
       replacement = decisions.get(slotKey) ?? null;
     } else {
       const r = rand();
-      if (r < 0.35 * strength && isPlainTriad(symbol)) {
+      if (r < susThreshold && isPlainTriad(symbol)) {
         // sus4: 参照コーパスで多用される (解決しない浮遊感)
         replacement = `${symbol}sus4`;
       } else if (r < 0.65 * strength) {

@@ -47,6 +47,22 @@ function feature(overrides: Partial<MidiFeatures> = {}): MidiFeatures {
     melodyRange: 24,
     melodyNotesPerBar: 6,
     offbeatRatio: 0.4,
+    bass: {
+      notesPerBar: 2,
+      medianPitch: 40,
+      motionHistogram: [0, 0.1, 0.1, 0.05, 0.05, 0.3, 0.1, 0.2, 0.02, 0.03, 0.02, 0.03],
+      fifthShare: 0.5,
+      stepShare: 0.2,
+      leapShare: 0.05,
+    },
+    melody: { medianPitch: 72, stepwiseShare: 0.6, restRatio: 0.25, medianDuration16: 2 },
+    susShare: 0.1,
+    seventhShare: 0.4,
+    familyStats: {
+      bass: { notes: 400, notesPerBar: 1, medianPitch: 40 },
+      lead: { notes: 300, notesPerBar: 2, medianPitch: 76 },
+      pad: { notes: 300, notesPerBar: 2, medianPitch: 60 },
+    },
     ...overrides,
   };
 }
@@ -54,7 +70,7 @@ function feature(overrides: Partial<MidiFeatures> = {}): MidiFeatures {
 describe("aggregateFeatures", () => {
   it("builds a profile from features", () => {
     const profile = aggregateFeatures([feature(), feature({ bpm: 140, key: "C major" })], { label: "test" });
-    expect(profile.version).toBe(1);
+    expect(profile.version).toBe(2);
     expect(profile.source.label).toBe("test");
     expect(profile.source.files).toBe(2);
     expect(profile.tempo.median).toBeGreaterThan(120);
@@ -66,6 +82,16 @@ describe("aggregateFeatures", () => {
     expect(profile.harmony.medianChordsPerBar).toBe(1.5);
     expect(profile.rhythm.sixteenthShare).toBeCloseTo(0.45);
     expect(profile.form.medianSectionBars).toBe(8);
+    // v2: ベース・旋律・楽器レジスタ・sus/7th の統計
+    expect(profile.bass.medianNotesPerBar).toBeGreaterThan(0);
+    expect(profile.bass.motionHistogram.length).toBe(12);
+    expect(profile.harmony.susShare).toBeCloseTo(0.1, 3);
+    expect(profile.harmony.seventhShare).toBeCloseTo(0.4, 3);
+    expect(profile.melody.medianPitch).toBeGreaterThan(60);
+    expect(profile.instrumentStats.bass?.share).toBeGreaterThan(0);
+    expect(profile.insights.join(" ")).toContain("Bass:");
+    expect(profile.insights.join(" ")).toContain("Melody:");
+    expect(profile.insights.join(" ")).toContain("Typical registers");
     expect(profile.insights.length).toBeGreaterThan(3);
     // モードの知見は「短調が普通だから長調を既定にしない」と特定モードへ誘導しない
     expect(profile.insights.join(" ")).toContain("about equally");
@@ -120,12 +146,15 @@ describe("evaluateCorpusFit", () => {
 describe("generated profile", () => {
   it("is either absent or a well-formed profile", () => {
     if (corpusProfile === null) return;
-    expect(corpusProfile.version).toBe(1);
+    expect(corpusProfile.version).toBe(2);
     expect(corpusProfile.source.analyzed).toBeGreaterThan(0);
     expect(corpusProfile.insights.length).toBeGreaterThan(0);
     expect(corpusProfile.rhythm.beatPos16.length).toBeGreaterThan(0);
-    // 旋律そのものは含まない
-    expect(JSON.stringify(corpusProfile)).not.toMatch(/notes|pitches/);
+    // 旋律そのものは含まない ("notes per bar" のような統計の文言は可)
+    const json = JSON.stringify(corpusProfile);
+    expect(json).not.toMatch(/"pitches"\s*:/);
+    expect(json).not.toMatch(/"notes"\s*:\s*\[/);
+    expect(json).not.toMatch(/"startTicks"\s*:/);
   });
 
   it("injects corpus tendencies into the plan prompt only when a profile exists", () => {

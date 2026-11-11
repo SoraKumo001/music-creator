@@ -9,6 +9,7 @@ import type { CorpusProfile } from "../analyze/corpus";
 import type { Plan } from "../plan";
 import { COMP_STYLES, BASS_STYLES } from "../theory/accompaniment";
 import { drumPatternPitchShares, DRUM_PATTERN_NAMES } from "../theory/drums";
+import { corpusStyleFit, normalizedStyleScores } from "./styleMatch";
 
 export const corpusProfile: CorpusProfile | null = CORPUS_PROFILE;
 
@@ -92,6 +93,12 @@ export function corpusRuleHints(opts: CorpusHintOptions = {}): CorpusRuleHints |
   };
   // arpeggio16 は16分割で刻むスタイル。dense 指定時は優先する
   if (opts.dense) compScore.arpeggio16 = (compScore.arpeggio16 ?? 0) + 2;
+  // 実測: 各スタイルで伴奏を組んだときのオンセット分布がコーパスにどれだけ近いか
+  const fit = opts.useStyleFit !== false ? corpusStyleFit(p) : null;
+  if (fit) {
+    const compFit = normalizedStyleScores(fit.comp);
+    for (const style of COMP_STYLES) compScore[style] = (compScore[style] ?? 0) + (compFit[style] ?? 0) * 2;
+  }
   const compStyles = [...COMP_STYLES].sort((a, b) => (compScore[b] ?? 0) - (compScore[a] ?? 0));
 
   // --- bass: 細分性が高ければ刻む/動く、低ければルート中心 ---
@@ -102,6 +109,10 @@ export function corpusRuleHints(opts: CorpusHintOptions = {}): CorpusRuleHints |
     root: r.downbeatShare * 1.5,
     pedal: r.downbeatShare * 0.7,
   };
+  if (fit) {
+    const bassFit = normalizedStyleScores(fit.bass);
+    for (const style of BASS_STYLES) bassScore[style] = (bassScore[style] ?? 0) + (bassFit[style] ?? 0) * 2;
+  }
   const bassStyles = [...BASS_STYLES].sort((a, b) => (bassScore[b] ?? 0) - (bassScore[a] ?? 0));
 
   // --- 音色: コーパスの上位ファミリーを既定プログラムへ ---
@@ -195,7 +206,22 @@ export type CorpusHintOptions = {
   prompt?: string;
   /** true なら 16 分主体の comp を優先する (standard 以上の complexity) */
   dense?: boolean;
+  /** false ならコーパスのオンセット分布によるスタイル適合度を使わない (A/B/回帰用) */
+  useStyleFit?: boolean;
 };
+
+/** 旋律生成プロンプト用: コーパスの旋律の鳴り方を短く渡す (統計のみ) */
+export function corpusMelodyGuidance(): string {
+  const p = corpusProfile;
+  if (!p) return "";
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  return (
+    `\n\nReference-corpus melody prior (statistics only; follow as a tendency unless the request differs):` +
+    `\n- about ${p.rhythm.medianMelodyNotesPerBar} notes per bar, range ~${p.rhythm.medianMelodyRange} semitones, median register ${p.melody.medianPitch};` +
+    `\n- stepwise motion ${pct(p.melody.stepwiseShare)}; median note length ~${p.melody.medianDuration16} sixteenth(s);` +
+    `\n- keep the line continuous with short breaths rather than long rests.`
+  );
+}
 
 /** 静か・ローファイ・バラード・ピアノ独奏など、過密な16分刻みを強制すべきでないプロンプトか判定 */
 export function isCalmPrompt(prompt?: string): boolean {

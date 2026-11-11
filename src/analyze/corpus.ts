@@ -6,7 +6,7 @@
 import { parseKeyName } from "../theory/key";
 import { programFamily, type MidiFeatures } from "./features";
 
-export const CORPUS_PROFILE_VERSION = 1;
+export const CORPUS_PROFILE_VERSION = 2;
 
 export type CorpusProfile = {
   version: number;
@@ -43,11 +43,40 @@ export type CorpusProfile = {
     medianChordsPerBar: number;
     qualities: Record<string, number>;
     borrowedRate: number;
+    /** sus4/sus2 がコード枠に占める割合 */
+    susShare: number;
+    /** 7th 系コードの割合 */
+    seventhShare: number;
     /** ローマ数字の2連 (上位) */
     topBigrams: { pair: string; share: number }[];
     /** 4小節窓のローマ数字列 (上位) */
     topProgressions: { numerals: string; share: number }[];
   };
+  /** ベース声部の傾向 */
+  bass: {
+    medianNotesPerBar: number;
+    medianPitch: number;
+    /** 音程 (mod 12) の平均分布 (合計1) */
+    motionHistogram: number[];
+    /** 完全4度/5度進行の割合 */
+    fifthShare: number;
+    /** 順次進行の割合 */
+    stepShare: number;
+    /** 跳躍の割合 */
+    leapShare: number;
+  };
+  /** 旋律の質感 */
+  melody: {
+    medianPitch: number;
+    /** 順次進行の割合 */
+    stepwiseShare: number;
+    /** フレーズの切れ目 (休符) の割合 */
+    restRatio: number;
+    /** 音価の中央値 (16分単位) */
+    medianDuration16: number;
+  };
+  /** 楽器ファミリー別の密度・音域 */
+  instrumentStats: Record<string, { share: number; medianNotesPerBar: number; medianPitch: number }>;
   form: {
     medianSectionBars: number;
     /** セクション長の分位点 [p10, p50, p90] */
@@ -211,6 +240,38 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
   const sectionLengths = features.flatMap((f) => f.sectionBars.filter((x) => x >= 2 && x <= 64));
   const sectionsPerFile = features.map((f) => f.sectionBars.length);
 
+  // ---- ベース・旋律・楽器の詳細統計 ----
+  const bassStats = {
+    medianNotesPerBar: round(median(features.map((f) => f.bass.notesPerBar)), 2),
+    medianPitch: round(median(features.map((f) => f.bass.medianPitch)), 1),
+    motionHistogram: averageHistograms(features.map((f) => f.bass.motionHistogram)),
+    fifthShare: round(mean(features.map((f) => f.bass.fifthShare)), 3),
+    stepShare: round(mean(features.map((f) => f.bass.stepShare)), 3),
+    leapShare: round(mean(features.map((f) => f.bass.leapShare)), 3),
+  };
+  const melodyStats = {
+    medianPitch: round(median(features.map((f) => f.melody.medianPitch)), 1),
+    stepwiseShare: round(mean(features.map((f) => f.melody.stepwiseShare)), 3),
+    restRatio: round(mean(features.map((f) => f.melody.restRatio)), 3),
+    medianDuration16: round(median(features.map((f) => f.melody.medianDuration16)), 1),
+  };
+  const familyTotals = new Map<string, number>();
+  for (const f of features) {
+    for (const [fam, st] of Object.entries(f.familyStats)) {
+      familyTotals.set(fam, (familyTotals.get(fam) ?? 0) + st.notes);
+    }
+  }
+  const familyGrandTotal = [...familyTotals.values()].reduce((a, b) => a + b, 0);
+  const instrumentStats: CorpusProfile["instrumentStats"] = {};
+  for (const [fam, count] of [...familyTotals.entries()].sort((a, b) => b[1] - a[1])) {
+    const withFamily = features.filter((f) => (f.familyStats[fam]?.notes ?? 0) > 0);
+    instrumentStats[fam] = {
+      share: round(count / Math.max(1, familyGrandTotal), 3),
+      medianNotesPerBar: round(median(withFamily.map((f) => f.familyStats[fam]!.notesPerBar)), 2),
+      medianPitch: round(median(withFamily.map((f) => f.familyStats[fam]!.medianPitch)), 1),
+    };
+  }
+
   const profile: CorpusProfile = {
     version: CORPUS_PROFILE_VERSION,
     generatedAt: new Date().toISOString(),
@@ -246,9 +307,14 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
       medianChordsPerBar: round(median(harmonyFiles.map((f) => f.chordsPerBar)), 2),
       qualities,
       borrowedRate: round(mean(harmonyFiles.map((f) => f.borrowedRate)), 3),
+      susShare: round(mean(harmonyFiles.map((f) => f.susShare)), 3),
+      seventhShare: round(mean(harmonyFiles.map((f) => f.seventhShare)), 3),
       topBigrams: topShare(bigramCounts, 10, bigramTotal),
       topProgressions: topNumerals(progressionCounts, 6, progressionTotal),
     },
+    bass: bassStats,
+    melody: melodyStats,
+    instrumentStats,
     form: {
       medianSectionBars: round(median(sectionLengths), 1),
       sectionBarPercentiles: [
@@ -317,7 +383,23 @@ export function buildInsights(p: CorpusProfile): string[] {
   out.push(`Harmonic rhythm: about ${p.harmony.medianChordsPerBar} chord(s) per bar; borrowed/secondary chords in about ${pct(p.harmony.borrowedRate)} of chord slots.`);
 
   const qualities = Object.entries(p.harmony.qualities).slice(0, 4).map(([k, v]) => `${k || "triad"} ${pct(v)}`);
-  if (qualities.length > 0) out.push(`Chord qualities: ${qualities.join(", ")}.`);
+  if (qualities.length > 0) out.push(`Chord qualities: ${qualities.join(", ")}${p.harmony.susShare > 0.02 ? `; sus chords ${pct(p.harmony.susShare)}` : ""}${p.harmony.seventhShare > 0.05 ? `, 7th chords ${pct(p.harmony.seventhShare)}` : ""}.`);
+
+  // ベース・旋律の「鳴り方」は編曲の説得力に直結するため、生成プロンプトにも渡す
+  out.push(
+    `Bass: about ${p.bass.medianNotesPerBar} notes/bar around register ${p.bass.medianPitch}; ` +
+    `root motion steps ${pct(p.bass.stepShare)}, 4ths/5ths ${pct(p.bass.fifthShare)}, leaps ${pct(p.bass.leapShare)}.`,
+  );
+  out.push(
+    `Melody: about ${p.rhythm.medianMelodyNotesPerBar} notes/bar (range ~${p.rhythm.medianMelodyRange} semitones), ` +
+    `median register ${p.melody.medianPitch}; stepwise motion ${pct(p.melody.stepwiseShare)}, ` +
+    `phrase gaps in ${pct(p.melody.restRatio)} of moves, median note length ${p.melody.medianDuration16} (16ths).`,
+  );
+
+  const registerSummary = Object.entries(p.instrumentStats)
+    .slice(0, 3)
+    .map(([fam, s]) => `${fam} ~${s.medianPitch}`);
+  if (registerSummary.length > 0) out.push(`Typical registers: ${registerSummary.join(", ")}.`);
 
   if (p.harmony.topBigrams.length > 0) {
     // 同じ和音の連続は「進行」としての情報量が少ないので知見からは外す

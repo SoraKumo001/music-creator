@@ -173,4 +173,13 @@ describe("melody prompt", () => {
     const text = melodyMessages("x", plan, resolveSections(plan, 2, 4), 2, 4)[0]!.content;
     expect(text).toContain("first violin");
   });
+
+  it("injects the corpus melody prior unless corpus is disabled", () => {
+    const plan = PlanSchema.parse({ bpm: 100, key: "C major", chords: [[0, "C"]] });
+    const sections = resolveSections(plan, 2, 4);
+    expect(melodyMessages("x", plan, sections, 2, 4)[0]!.content).toContain("Reference-corpus melody prior");
+    expect(melodyMessages("x", plan, sections, 2, 4, { corpus: false })[0]!.content).not.toContain(
+      "Reference-corpus melody prior",
+    );
+  });
 });
