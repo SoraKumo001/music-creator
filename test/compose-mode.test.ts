@@ -6,9 +6,13 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
  * 既定回数内で直らなければ同主調へ実現し直すフォールバックが働くことを確認する。
  */
 
-const state = vi.hoisted(() => ({ responses: [] as string[] }));
+const state = vi.hoisted(() => ({
+  responses: [] as string[],
+  messages: [] as { role: string; content: string }[][],
+}));
 vi.mock("../src/llm/provider", () => ({
-  chat: vi.fn(async () => {
+  chat: vi.fn(async (_cfg: unknown, messages: { role: string; content: string }[]) => {
+    state.messages.push(messages);
     const content = state.responses.shift();
     if (content === undefined) throw new Error("mock: no more responses");
     return { content, usage: { completion_tokens: 1 }, ms: 1 };
@@ -83,6 +87,7 @@ function craftViolatingPlanJson(): string {
 
 beforeEach(() => {
   state.responses.length = 0;
+  state.messages.length = 0;
 });
 
 describe("compose mode enforcement", () => {
@@ -150,5 +155,21 @@ describe("compose mode enforcement", () => {
     // 採用されたプランはクラフト違反が1項目以下
     expect(r.craft.failed.length).toBeLessThanOrEqual(1);
     expect(r.craft.score).toBeGreaterThanOrEqual(80);
+  });
+
+  it("does not inject web knowledge by default (opt-in after the A/B showed a regression)", async () => {
+    const seed = seedFor("major");
+    state.responses.push(goodPlanJson("major"), melodyJson(), melodyJson(), melodyJson());
+    await compose(cfg, PROMPT, 8, { seed, creativity: 0.5, complexity: "standard" });
+    const system = state.messages[0]![0]!.content;
+    expect(system).not.toContain("Composition craft notes");
+  });
+
+  it("injects web knowledge when explicitly enabled", async () => {
+    const seed = seedFor("major");
+    state.responses.push(goodPlanJson("major"), melodyJson(), melodyJson(), melodyJson());
+    await compose(cfg, PROMPT, 8, { seed, creativity: 0.5, complexity: "standard", webKnowledge: true });
+    const system = state.messages[0]![0]!.content;
+    expect(system).toContain("Composition craft notes");
   });
 });

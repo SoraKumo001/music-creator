@@ -25,6 +25,11 @@ const Body = z.object({
   seed: z.number().int().min(0).max(4294967295).nullish(),
   creativity: z.number().min(0).max(1).default(0.5),
   complexity: z.enum(COMPLEXITIES).default("standard"),
+  /**
+   * 公開文献から抽出したWeb知識カードを生成に使うか。
+   * A/B実測でコーパス適合度が下がったため既定は false (opt-in)。
+   */
+  webKnowledge: z.boolean().default(false),
 });
 
 function toBase64(bytes: Uint8Array): string {
@@ -49,7 +54,14 @@ app.post("/api/compose", async (c) => {
       cfg,
       parsed.data.prompt,
       parsed.data.bars,
-      { loop: parsed.data.loop, ensemble: parsed.data.ensemble, seed: parsed.data.seed ?? undefined, creativity: parsed.data.creativity, complexity: parsed.data.complexity },
+      {
+        loop: parsed.data.loop,
+        ensemble: parsed.data.ensemble,
+        seed: parsed.data.seed ?? undefined,
+        creativity: parsed.data.creativity,
+        complexity: parsed.data.complexity,
+        webKnowledge: parsed.data.webKnowledge,
+      },
     );
     const { score, midi, sections, attempts, stats, harmony, issues, suggestions, complexity, craft } = result;
     const explain = c.req.query("explain") === "1";

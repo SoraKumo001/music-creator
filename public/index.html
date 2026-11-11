@@ -115,6 +115,10 @@
         <label for="loop">ループ用</label>
         <input id="loop" type="checkbox" title="最後を終止させず、次の周へ自然につなげます">
       </div>
+      <div style="flex:0 0 auto">
+        <label for="webKnowledge" title="公開文献から抽出した作曲ノウハウ（Web知識カード）。実験的機能のため既定OFF">Web知識 (実験)</label>
+        <input id="webKnowledge" type="checkbox">
+      </div>
       <div>
         <label for="creativity">個性 (0=定番 / 1=冒険)</label>
         <select id="creativity">
@@ -212,6 +216,7 @@ $("form").addEventListener("submit", async (e) => {
       ensemble: $("ensemble").value,
       creativity: Number($("creativity").value),
       complexity: $("complexity").value,
+      webKnowledge: $("webKnowledge").checked,
       seed: seedVal === "" ? null : Number(seedVal),
     };
     const res = await fetch("/api/compose", {
@@ -718,6 +723,7 @@ async function renderLibrary() {
             if (full.request.complexity) $("complexity").value = full.request.complexity;
             if (full.request.ensemble) $("ensemble").value = full.request.ensemble;
             if (typeof full.request.loop === "boolean") $("loop").checked = full.request.loop;
+    if (typeof full.request.webKnowledge === "boolean") $("webKnowledge").checked = full.request.webKnowledge;
             if (full.request.creativity) $("creativity").value = String(full.request.creativity);
             if (full.request.seed != null) $("seed").value = String(full.request.seed);
             else $("seed").value = "";

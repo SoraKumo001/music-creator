@@ -99,6 +99,38 @@
       "note": "リズムの基本"
     },
     {
+      "id": "counterpoint",
+      "url": "https://en.wikipedia.org/wiki/Counterpoint",
+      "title": "Counterpoint",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "対位法・声部の独立性"
+    },
+    {
+      "id": "hook",
+      "url": "https://en.wikipedia.org/wiki/Hook_(music)",
+      "title": "Hook (music)",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "フック・記憶に残る旋律"
+    },
+    {
+      "id": "call-response",
+      "url": "https://en.wikipedia.org/wiki/Call_and_response_(music)",
+      "title": "Call and response (music)",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "コール&レスポンス・掛け合い"
+    },
+    {
+      "id": "arrangement",
+      "url": "https://en.wikipedia.org/wiki/Arrangement",
+      "title": "Arrangement",
+      "license": "CC BY-SA 4.0 (Wikipedia)",
+      "lang": "en",
+      "note": "編曲・楽器の役割分担"
+    },
+    {
       "id": "ja-pop-harmony",
       "url": "https://ja.wikipedia.org/wiki/ポピュラー和声",
       "title": "ポピュラー和声",

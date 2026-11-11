@@ -48,6 +48,35 @@ describe("/api/health", () => {
   });
 });
 
+describe("/api/compose body validation", () => {
+  it("rejects a non-boolean webKnowledge before calling the LLM", async () => {
+    const res = await app.request(
+      "/api/compose",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "test", webKnowledge: "yes" }),
+      },
+      env,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a boolean webKnowledge (fails later at the LLM layer, not at validation)", async () => {
+    // 無効な llm 設定にして compose 前に 500 を返させる (body 検証は通過している)
+    const res = await app.request(
+      "/api/compose",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "test", webKnowledge: false }),
+      },
+      {},
+    );
+    expect(res.status).toBe(500);
+  });
+});
+
 describe("OGP injection", () => {
   const html = `<!doctype html><html><head>
 <link rel="canonical" href="/">

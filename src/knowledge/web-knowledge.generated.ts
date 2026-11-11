@@ -25,7 +25,8 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.95,
     "sourceUrl": "https://en.wikipedia.org/wiki/Chord_progression",
     "sourceTitle": "Chord progression",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": []
   },
   {
     "id": "harmony-2",
@@ -48,7 +49,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.95,
     "sourceUrl": "https://en.wikipedia.org/wiki/Chord_progression",
     "sourceTitle": "Chord progression",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "modal"
+    ]
   },
   {
     "id": "harmony-3",
@@ -71,7 +75,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.95,
     "sourceUrl": "https://en.wikipedia.org/wiki/Cadence",
     "sourceTitle": "Cadence",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "dynamics"
+    ]
   },
   {
     "id": "harmony-4",
@@ -94,7 +101,8 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.95,
     "sourceUrl": "https://en.wikipedia.org/wiki/Modulation_(music)",
     "sourceTitle": "Modulation (music)",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": []
   },
   {
     "id": "harmony-5",
@@ -117,7 +125,8 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.95,
     "sourceUrl": "https://ja.wikipedia.org/wiki/ポピュラー和声",
     "sourceTitle": "ポピュラー和声",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": []
   },
   {
     "id": "harmony-6",
@@ -140,7 +149,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.95,
     "sourceUrl": "https://ja.wikipedia.org/wiki/ポピュラー和声",
     "sourceTitle": "ポピュラー和声",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "dynamics"
+    ]
   },
   {
     "id": "harmony-7",
@@ -164,7 +176,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Chord_progression",
     "sourceTitle": "Chord progression",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "modal"
+    ]
   },
   {
     "id": "harmony-8",
@@ -186,7 +201,8 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Chord_progression",
     "sourceTitle": "Chord progression",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": []
   },
   {
     "id": "harmony-9",
@@ -209,7 +225,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Harmony",
     "sourceTitle": "Harmony",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "dynamics"
+    ]
   },
   {
     "id": "harmony-10",
@@ -230,7 +249,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Harmony",
     "sourceTitle": "Harmony",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint"
+    ]
   },
   {
     "id": "melody-11",
@@ -253,7 +275,11 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Melody",
     "sourceTitle": "Melody",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "hook",
+      "ostinato"
+    ]
   },
   {
     "id": "melody-12",
@@ -273,7 +299,11 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Melody",
     "sourceTitle": "Melody",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "hook",
+      "ostinato"
+    ]
   },
   {
     "id": "form-13",
@@ -296,7 +326,11 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Song_structure",
     "sourceTitle": "Song structure",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "dynamics",
+      "callResponse"
+    ]
   },
   {
     "id": "arrangement-14",
@@ -319,7 +353,11 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Song_structure",
     "sourceTitle": "Song structure",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "groove",
+      "dynamics"
+    ]
   },
   {
     "id": "arrangement-15",
@@ -341,7 +379,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Bassline",
     "sourceTitle": "Bassline",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "walkingBass"
+    ]
   },
   {
     "id": "theory-16",
@@ -362,7 +403,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Bassline",
     "sourceTitle": "Bassline",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint"
+    ]
   },
   {
     "id": "rhythm-17",
@@ -386,7 +430,11 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Drum_beat",
     "sourceTitle": "Drum beat",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "groove",
+      "fourOnFloor"
+    ]
   },
   {
     "id": "arrangement-18",
@@ -409,7 +457,11 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Voicing_(music)",
     "sourceTitle": "Voicing (music)",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "sparse",
+      "dense"
+    ]
   },
   {
     "id": "arrangement-19",
@@ -430,7 +482,10 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Orchestration",
     "sourceTitle": "Orchestration",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint"
+    ]
   },
   {
     "id": "arrangement-20",
@@ -452,7 +507,11 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Orchestration",
     "sourceTitle": "Orchestration",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "sparse",
+      "dense"
+    ]
   },
   {
     "id": "rhythm-21",
@@ -474,10 +533,172 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.9,
     "sourceUrl": "https://en.wikipedia.org/wiki/Rhythm",
     "sourceTitle": "Rhythm",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "groove",
+      "fourOnFloor"
+    ]
   },
   {
-    "id": "form-22",
+    "id": "arrangement-22",
+    "category": "arrangement",
+    "title": "Keep voices independent in rhythm and contour",
+    "advice": [
+      "Give each simultaneous line its own rhythmic pattern and melodic shape so it stays distinguishable.",
+      "Treat the resulting harmony as a by-product of independent lines rather than the main goal.",
+      "Avoid letting voices move in rigid parallel motion, which fuses them into one timbre."
+    ],
+    "keywords": [
+      "counterpoint",
+      "対位法",
+      "voice independence",
+      "声部の独立",
+      "parallel motion",
+      "並行進行"
+    ],
+    "confidence": 0.9,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Counterpoint",
+    "sourceTitle": "Counterpoint",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint",
+      "syncopation"
+    ]
+  },
+  {
+    "id": "arrangement-23",
+    "category": "arrangement",
+    "title": "Combine independent melodies for contrapuntal texture",
+    "advice": [
+      "Write two or three independent melodic lines that each stand on their own, then combine them so the harmony emerges from their interaction.",
+      "Add a second voice to an existing subject to reveal a new harmonic coloring of the original line.",
+      "Keep each line rhythmically distinct so the listener can follow them separately."
+    ],
+    "keywords": [
+      "counterpoint",
+      "対位法",
+      "independent melody",
+      "複旋律",
+      "voice leading",
+      "polyphony"
+    ],
+    "confidence": 0.9,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Counterpoint",
+    "sourceTitle": "Counterpoint",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint"
+    ]
+  },
+  {
+    "id": "melody-24",
+    "category": "melody",
+    "title": "Melodic motion rules for counterpoint lines",
+    "advice": [
+      "Approach the final note by step, raising the leading tone at cadences in minor modes.",
+      "Prefer stepwise motion; after a skip, move by step in the opposite direction.",
+      "Avoid more than two skips in the same direction, and make the second skip smaller than the first."
+    ],
+    "keywords": [
+      "counterpoint",
+      "melody",
+      "stepwise motion",
+      "skip",
+      "leading tone",
+      "cadence",
+      "対位法",
+      "旋律"
+    ],
+    "confidence": 0.9,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Counterpoint",
+    "sourceTitle": "Counterpoint",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint",
+      "modal"
+    ]
+  },
+  {
+    "id": "melody-25",
+    "category": "melody",
+    "title": "Make the hook short, repetitive, and memorable",
+    "advice": [
+      "Build the hook from a short phrase or riff that repeats several times, usually in the chorus.",
+      "Make it attention-grabbing and easy to remember rather than complex.",
+      "Optionally add an octave leap or other melodic surprise to make the line stand out."
+    ],
+    "keywords": [
+      "hook",
+      "サビ",
+      "chorus",
+      "riff",
+      "motif",
+      "catchy",
+      "反復"
+    ],
+    "confidence": 0.9,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Hook_(music)",
+    "sourceTitle": "Hook (music)",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "hook",
+      "ostinato"
+    ]
+  },
+  {
+    "id": "form-26",
+    "category": "form",
+    "title": "Call and response as conversational phrase pairing",
+    "advice": [
+      "Build a piece from paired phrases: state an opening idea, then answer it with a distinct responding phrase.",
+      "Make the response function as commentary, an answer, or a near-repetition that slightly overlaps the call.",
+      "Treat this pairing as a basic building block of form, stacking pairs into larger sections like verse and chorus."
+    ],
+    "keywords": [
+      "call and response",
+      "呼びかけと応答",
+      "phrase pairing",
+      "conversation",
+      "musical form",
+      "verse-chorus"
+    ],
+    "confidence": 0.9,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Call_and_response_(music)",
+    "sourceTitle": "Call and response (music)",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "callResponse"
+    ]
+  },
+  {
+    "id": "arrangement-27",
+    "category": "arrangement",
+    "title": "Use antiphonal contrast between divided groups",
+    "advice": [
+      "Split the ensemble into distinct groups and set them in opposition.",
+      "Create contrast between the groups using volume, pitch, and timbre rather than only melody.",
+      "Exploit spatial separation when possible so the alternation is heard as a dialogue."
+    ],
+    "keywords": [
+      "antiphony",
+      "call and response",
+      "polychoral",
+      "contrast",
+      "timbre",
+      "spatial",
+      "交唱"
+    ],
+    "confidence": 0.9,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Call_and_response_(music)",
+    "sourceTitle": "Call and response (music)",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "callResponse",
+      "dynamics"
+    ]
+  },
+  {
+    "id": "form-28",
     "category": "form",
     "title": "Use question-and-answer phrasing to extend simple progressions",
     "advice": [
@@ -496,10 +717,14 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Chord_progression",
     "sourceTitle": "Chord progression",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "callResponse",
+      "dynamics"
+    ]
   },
   {
-    "id": "melody-23",
+    "id": "melody-29",
     "category": "melody",
     "title": "Shape melodic motion and contour",
     "advice": [
@@ -520,10 +745,13 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Melody",
     "sourceTitle": "Melody",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "dynamics"
+    ]
   },
   {
-    "id": "form-24",
+    "id": "form-30",
     "category": "form",
     "title": "Limit pop melodies to verse/chorus/bridge",
     "advice": [
@@ -541,10 +769,13 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Melody",
     "sourceTitle": "Melody",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "hook"
+    ]
   },
   {
-    "id": "form-25",
+    "id": "form-31",
     "category": "form",
     "title": "Standard pop section order with pre-chorus and bridge",
     "advice": [
@@ -564,10 +795,14 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Song_structure",
     "sourceTitle": "Song structure",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "hook",
+      "dynamics"
+    ]
   },
   {
-    "id": "rhythm-26",
+    "id": "rhythm-32",
     "category": "rhythm",
     "title": "Create groove through micro-timing and collective feel",
     "advice": [
@@ -587,10 +822,14 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Groove_(music)",
     "sourceTitle": "Groove (music)",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "groove",
+      "syncopation"
+    ]
   },
   {
-    "id": "rhythm-27",
+    "id": "rhythm-33",
     "category": "rhythm",
     "title": "Cadence needs rhythmic and harmonic closure together",
     "advice": [
@@ -609,10 +848,13 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Cadence",
     "sourceTitle": "Cadence",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "dynamics"
+    ]
   },
   {
-    "id": "rhythm-28",
+    "id": "rhythm-34",
     "category": "rhythm",
     "title": "リフとグルーヴの反復",
     "advice": [
@@ -632,10 +874,15 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Bassline",
     "sourceTitle": "Bassline",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "ostinato",
+      "groove",
+      "syncopation"
+    ]
   },
   {
-    "id": "arrangement-29",
+    "id": "arrangement-35",
     "category": "arrangement",
     "title": "低音のオクターブ重複と役割分担",
     "advice": [
@@ -653,10 +900,13 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Bassline",
     "sourceTitle": "Bassline",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint"
+    ]
   },
   {
-    "id": "rhythm-30",
+    "id": "rhythm-36",
     "category": "rhythm",
     "title": "Use fills to mark phrase endings",
     "advice": [
@@ -674,10 +924,14 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Drum_beat",
     "sourceTitle": "Drum beat",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "dynamics",
+      "callResponse"
+    ]
   },
   {
-    "id": "arrangement-31",
+    "id": "arrangement-37",
     "category": "arrangement",
     "title": "Control line independence by limiting parallel motion",
     "advice": [
@@ -697,33 +951,13 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Voicing_(music)",
     "sourceTitle": "Voicing (music)",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint"
+    ]
   },
   {
-    "id": "arrangement-32",
-    "category": "arrangement",
-    "title": "Unison and octave doubling for orchestral color",
-    "advice": [
-      "Double a melody in unison to blend two distinct timbres into one composite color.",
-      "Add octave doublings above or below to widen a line without thickening the harmony.",
-      "Combine unison and octave doublings to build a delicate, differentiated texture."
-    ],
-    "keywords": [
-      "doubling",
-      "unison",
-      "octave",
-      "orchestration",
-      "オーケストレーション",
-      "ユニゾン",
-      "オクターブ"
-    ],
-    "confidence": 0.85,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Voicing_(music)",
-    "sourceTitle": "Voicing (music)",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "form-33",
+    "id": "form-38",
     "category": "form",
     "title": "Use modulation to shape form",
     "advice": [
@@ -741,54 +975,14 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Modulation_(music)",
     "sourceTitle": "Modulation (music)",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "modal",
+      "dynamics"
+    ]
   },
   {
-    "id": "arrangement-34",
-    "category": "arrangement",
-    "title": "Controlling tone color with instruments, register, and dynamics",
-    "advice": [
-      "Choose instruments, registers, and dynamics together to shape the overall tone color.",
-      "Use high register and loud dynamics for a bright sound; use low register and soft dynamics for a dark, heavy sound.",
-      "Combine instruments with contrasting timbres to thicken or color a chord."
-    ],
-    "keywords": [
-      "tone color",
-      "timbre",
-      "dynamics",
-      "register",
-      "音色",
-      "編曲"
-    ],
-    "confidence": 0.85,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Orchestration",
-    "sourceTitle": "Orchestration",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "arrangement-35",
-    "category": "arrangement",
-    "title": "Orchestrating a melody",
-    "advice": [
-      "Assign the melody to a lead instrument, then double it an octave below or add harmony in thirds and sixths.",
-      "Use unison across the full string section for a forceful melodic effect.",
-      "Keep high instruments on upper notes and low instruments on deeper pitches when doubling in unison."
-    ],
-    "keywords": [
-      "melody orchestration",
-      "doubling",
-      "unison",
-      "harmony thirds",
-      "旋律",
-      "ユニゾン"
-    ],
-    "confidence": 0.85,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Orchestration",
-    "sourceTitle": "Orchestration",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "rhythm-36",
+    "id": "rhythm-39",
     "category": "rhythm",
     "title": "Classify patterns by their relation to the pulse",
     "advice": [
@@ -807,10 +1001,120 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.85,
     "sourceUrl": "https://en.wikipedia.org/wiki/Rhythm",
     "sourceTitle": "Rhythm",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "syncopation",
+      "groove"
+    ]
   },
   {
-    "id": "form-37",
+    "id": "form-40",
+    "category": "form",
+    "title": "Use imitation to build contrapuntal texture",
+    "advice": [
+      "Restate a main melodic idea in other voices, with or without variation, to create imitative counterpoint.",
+      "Build larger structures from rounds, canons, or fugue-like entries when you want dense interlocking lines.",
+      "Loosen imitation into free counterpoint when you need chromaticism or dissonance."
+    ],
+    "keywords": [
+      "imitative counterpoint",
+      "模倣対位法",
+      "canon",
+      "カノン",
+      "fugue",
+      "フーガ",
+      "round"
+    ],
+    "confidence": 0.85,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Counterpoint",
+    "sourceTitle": "Counterpoint",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint",
+      "dense"
+    ]
+  },
+  {
+    "id": "melody-41",
+    "category": "melody",
+    "title": "Shaping a counterpoint line with a climax",
+    "advice": [
+      "Place a clear high point or climax in the middle of the line, on a strong beat.",
+      "Avoid outlining a seventh or tritone within a single line moving in one direction.",
+      "Keep three-note skips within one triad and within an octave."
+    ],
+    "keywords": [
+      "climax",
+      "melodic contour",
+      "tritone",
+      "seventh",
+      "strong beat",
+      "旋律の山",
+      "跳躍"
+    ],
+    "confidence": 0.85,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Counterpoint",
+    "sourceTitle": "Counterpoint",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint",
+      "dynamics"
+    ]
+  },
+  {
+    "id": "rhythm-42",
+    "category": "rhythm",
+    "title": "Use rhythm and syncopation as hook devices",
+    "advice": [
+      "Make the hook rhythmic as well as melodic by using a driving, danceable groove.",
+      "Use syncopation to create catchiness without relying on unusual melodic intervals."
+    ],
+    "keywords": [
+      "syncopation",
+      "シンコペーション",
+      "groove",
+      "danceable",
+      "rhythm hook",
+      "リズム"
+    ],
+    "confidence": 0.85,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Hook_(music)",
+    "sourceTitle": "Hook (music)",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "syncopation",
+      "groove",
+      "hook"
+    ]
+  },
+  {
+    "id": "melody-43",
+    "category": "melody",
+    "title": "Build competitive call-and-response verses",
+    "advice": [
+      "Write verses where a leader's phrase is answered by a responding group or soloist.",
+      "Make the response competitive or varied so each exchange adds energy.",
+      "Keep the call phrase short enough to invite an immediate answer."
+    ],
+    "keywords": [
+      "call and response",
+      "verse",
+      "leader",
+      "response",
+      "competitive",
+      "コールアンドレスポンス"
+    ],
+    "confidence": 0.85,
+    "sourceUrl": "https://en.wikipedia.org/wiki/Call_and_response_(music)",
+    "sourceTitle": "Call and response (music)",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "callResponse",
+      "dynamics"
+    ]
+  },
+  {
+    "id": "form-44",
     "category": "form",
     "title": "ジャンルに応じたコード密度の設計",
     "advice": [
@@ -831,10 +1135,15 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.8,
     "sourceUrl": "https://en.wikipedia.org/wiki/Chord_progression",
     "sourceTitle": "Chord progression",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "groove",
+      "dense",
+      "sparse"
+    ]
   },
   {
-    "id": "form-38",
+    "id": "form-45",
     "category": "form",
     "title": "Keep progressions short and genre-coded",
     "advice": [
@@ -853,10 +1162,14 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.8,
     "sourceUrl": "https://en.wikipedia.org/wiki/Chord_progression",
     "sourceTitle": "Chord progression",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "ostinato",
+      "hook"
+    ]
   },
   {
-    "id": "theory-39",
+    "id": "theory-46",
     "category": "theory",
     "title": "Harmony vs. counterpoint: vertical and horizontal",
     "advice": [
@@ -875,10 +1188,13 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.8,
     "sourceUrl": "https://en.wikipedia.org/wiki/Harmony",
     "sourceTitle": "Harmony",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "counterpoint"
+    ]
   },
   {
-    "id": "form-40",
+    "id": "form-47",
     "category": "form",
     "title": "Verse function and lyric contrast",
     "advice": [
@@ -898,10 +1214,13 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.8,
     "sourceUrl": "https://en.wikipedia.org/wiki/Song_structure",
     "sourceTitle": "Song structure",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
+      "hook"
+    ]
   },
   {
-    "id": "rhythm-41",
+    "id": "rhythm-48",
     "category": "rhythm",
     "title": "Build groove from a repeating framework plus variation",
     "advice": [
@@ -921,135 +1240,12 @@ export const WEB_KNOWLEDGE: WebKnowledgeCard[] = [
     "confidence": 0.8,
     "sourceUrl": "https://en.wikipedia.org/wiki/Groove_(music)",
     "sourceTitle": "Groove (music)",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "rhythm-42",
-    "category": "rhythm",
-    "title": "Build a locked, hypnotic groove",
-    "advice": [
-      "Lock the rhythm section into a single shared perception so drums and bass feel like one unit.",
-      "Repeat a simple, emphatic pattern hypnotically rather than varying it constantly.",
-      "Anchor the pattern on one strong bass note, then follow with lighter faster notes for momentum."
-    ],
-    "keywords": [
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "styleTags": [
       "groove",
-      "riddim",
-      "bassline",
-      "lock",
-      "反復",
-      "リズム隊"
-    ],
-    "confidence": 0.8,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Groove_(music)",
-    "sourceTitle": "Groove (music)",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "rhythm-43",
-    "category": "rhythm",
-    "title": "Shift feel with double-time, half-time and displaced patterns",
-    "advice": [
-      "Double or halve the pulse and ride pattern to create double-time or half-time feels.",
-      "Displace one drum's pattern by a sixteenth note to vary the groove while keeping the subdivision.",
-      "Use a one-eighth-plus-two-sixteenths bass pattern for a gallop feel."
-    ],
-    "keywords": [
-      "double-time",
-      "half-time",
-      "displacement",
-      "gallop",
-      "blast beat",
-      "倍テンポ",
-      "ハーフタイム"
-    ],
-    "confidence": 0.8,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Drum_beat",
-    "sourceTitle": "Drum beat",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "form-44",
-    "category": "form",
-    "title": "Shape rhythm as nested motives, not isolated beats",
-    "advice": [
-      "Design small rhythmic motives with their own shape, then combine them into a larger architectonic rhythmic structure.",
-      "Treat the unfolding rhythm as an organic process rather than a mechanical string of independent pulses."
-    ],
-    "keywords": [
-      "rhythmic motive",
-      "architectonic",
-      "form",
-      "motif",
-      "リズム動機",
-      "構成"
-    ],
-    "confidence": 0.8,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Rhythm",
-    "sourceTitle": "Rhythm",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "production-45",
-    "category": "production",
-    "title": "Synth bass for electronic and dance genres",
-    "advice": [
-      "In dance and electronic styles, build basslines on synthesizers rather than acoustic bass for consistent low-end and portability.",
-      "Use sequencers or modeled samples to keep basslines rhythmically tight and repeatable.",
-      "Tune percussive low sounds to specific pitches so they function as melodic bass."
-    ],
-    "keywords": [
-      "synth bass",
-      "シンセベース",
-      "sequencer",
-      "dance music",
-      "低音",
-      "production"
-    ],
-    "confidence": 0.75,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Bassline",
-    "sourceTitle": "Bassline",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "form-46",
-    "category": "form",
-    "title": "Build structure through improvisation",
-    "advice": [
-      "Use improvisation as a structural element rather than only as decoration.",
-      "Ground improvised passages in familiar harmonic schemes so they cohere with the piece."
-    ],
-    "keywords": [
-      "improvisation",
-      "structure",
-      "framework",
-      "即興",
-      "構成"
-    ],
-    "confidence": 0.7,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Harmony",
-    "sourceTitle": "Harmony",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
-  },
-  {
-    "id": "production-47",
-    "category": "production",
-    "title": "Separate composing from orchestrating",
-    "advice": [
-      "Draft a piano/vocal or short score first, then orchestrate it as a distinct pass.",
-      "Use a dedicated arranging pass to check balance, range, and doubling across the ensemble."
-    ],
-    "keywords": [
-      "piano/vocal score",
-      "short score",
-      "arranging",
-      "スコア",
-      "オーケストレーション"
-    ],
-    "confidence": 0.7,
-    "sourceUrl": "https://en.wikipedia.org/wiki/Orchestration",
-    "sourceTitle": "Orchestration",
-    "license": "CC BY-SA 4.0 (Wikipedia)"
+      "ostinato",
+      "syncopation"
+    ]
   }
 ];
 
@@ -1058,78 +1254,102 @@ export const WEB_KNOWLEDGE_SOURCES: WebKnowledgeSource[] = [
     "url": "https://en.wikipedia.org/wiki/Chord_progression",
     "title": "Chord progression",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:31:30.237Z"
+    "retrievedAt": "2026-11-11T02:16:47.236Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Harmony",
     "title": "Harmony",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:31:32.670Z"
+    "retrievedAt": "2026-11-11T02:16:49.670Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Melody",
     "title": "Melody",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:31:35.094Z"
+    "retrievedAt": "2026-11-11T02:16:52.097Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Song_structure",
     "title": "Song structure",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:31:36.716Z"
+    "retrievedAt": "2026-11-11T02:16:53.713Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Groove_(music)",
     "title": "Groove (music)",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:31:39.137Z"
+    "retrievedAt": "2026-11-11T02:16:56.139Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Cadence",
     "title": "Cadence",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:31:41.560Z"
+    "retrievedAt": "2026-11-11T02:16:58.559Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Bassline",
     "title": "Bassline",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:31:44.735Z"
+    "retrievedAt": "2026-11-11T02:17:00.987Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Drum_beat",
     "title": "Drum beat",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:32:03.928Z"
+    "retrievedAt": "2026-11-11T02:17:03.416Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Voicing_(music)",
     "title": "Voicing (music)",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:32:08.616Z"
+    "retrievedAt": "2026-11-11T02:17:04.223Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Modulation_(music)",
     "title": "Modulation (music)",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:32:25.047Z"
+    "retrievedAt": "2026-11-11T02:17:06.655Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Orchestration",
     "title": "Orchestration",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:32:38.768Z"
+    "retrievedAt": "2026-11-11T02:17:09.083Z"
   },
   {
     "url": "https://en.wikipedia.org/wiki/Rhythm",
     "title": "Rhythm",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:32:51.666Z"
+    "retrievedAt": "2026-11-11T02:17:11.499Z"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Counterpoint",
+    "title": "Counterpoint",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "retrievedAt": "2026-11-11T02:17:13.944Z"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Hook_(music)",
+    "title": "Hook (music)",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "retrievedAt": "2026-11-11T02:17:16.374Z"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Call_and_response_(music)",
+    "title": "Call and response (music)",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "retrievedAt": "2026-11-11T02:17:18.002Z"
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Arrangement",
+    "title": "Arrangement",
+    "license": "CC BY-SA 4.0 (Wikipedia)",
+    "retrievedAt": "2026-11-11T02:17:20.459Z"
   },
   {
     "url": "https://ja.wikipedia.org/wiki/ポピュラー和声",
     "title": "ポピュラー和声",
     "license": "CC BY-SA 4.0 (Wikipedia)",
-    "retrievedAt": "2026-11-10T13:33:06.997Z"
+    "retrievedAt": "2026-11-11T02:17:22.903Z"
   }
 ];

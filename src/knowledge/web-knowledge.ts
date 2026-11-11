@@ -8,6 +8,28 @@
 
 import { WEB_KNOWLEDGE, WEB_KNOWLEDGE_SOURCES } from "./web-knowledge.generated";
 import { hashSeed } from "../util/random";
+import type { Plan } from "../plan";
+
+/** 収集時に LLM がカードへ付ける固定語彙のスタイルタグ (自由文は入れない) */
+export const STYLE_TAGS = [
+  "groove",
+  "syncopation",
+  "halfTime",
+  "walkingBass",
+  "arpeggio",
+  "ostinato",
+  "swing",
+  "fourOnFloor",
+  "powerChords",
+  "callResponse",
+  "dynamics",
+  "sparse",
+  "dense",
+  "modal",
+  "counterpoint",
+  "hook",
+] as const;
+export type StyleTag = (typeof STYLE_TAGS)[number];
 
 /** 1枚の知識カード（= プロンプトへ差し込める短い指針） */
 export type WebKnowledgeCard = {
@@ -19,6 +41,8 @@ export type WebKnowledgeCard = {
   advice: string[];
   /** プロンプトリクエストとのマッチング用キーワード (日本語/英語) */
   keywords: string[];
+  /** 収集時に分類したスタイルタグ (ルール層の既定値補正に使う) */
+  styleTags?: StyleTag[];
   confidence: number;
   sourceUrl: string;
   sourceTitle: string;
@@ -45,6 +69,27 @@ const isLatinKeyword = (k: string) => /^[a-z0-9][a-z0-9 '&-]*$/i.test(k);
 /** プロンプトへの注入を保証する中核カテゴリ (リクエスト文と直接マッチしなくても作曲に効く) */
 const CORE_CATEGORIES = new Set(["harmony", "arrangement", "rhythm", "form"]);
 
+/** 短い曲・シンプル構成では出さない助言 (転調・ブリッジ・プリコーラス・32小節形式など) */
+const LONG_FORM_RE = /modulat|key change|pivot|転調|bridge|pre-chorus|プリコーラス|32-bar|32小節/i;
+
+export type WebKnowledgeContext = {
+  bars?: number;
+  complexity?: "simple" | "standard" | "rich";
+  ensemble?: "band" | "orchestra";
+  /** 静かなリクエストでは過密系の助言を出さない */
+  calm?: boolean;
+};
+
+/** カードがこの生成の文脈に合うか (無関係な助言でプロンプトを汚さない) */
+export function cardFitsContext(card: WebKnowledgeCard, ctx: WebKnowledgeContext = {}): boolean {
+  const text = `${card.title} ${card.keywords.join(" ")} ${card.advice.join(" ")}`;
+  if (ctx.bars !== undefined && ctx.bars < 16 && LONG_FORM_RE.test(text)) return false;
+  if (ctx.complexity === "simple" && /counterpoint|対位法|inversion|転回/i.test(text)) return false;
+  if (ctx.ensemble !== "orchestra" && /orchestra|orchestrat|オーケストラ/i.test(text)) return false;
+  if (ctx.calm && /dense|ostinato|power ?chord|double[- ]?kick/i.test(text)) return false;
+  return true;
+}
+
 export type SelectWebKnowledgeOptions = {
   /**
    * true ならキーワード一致が無いときに「生成に効く中核カテゴリ」から決定的に選ぶ。
@@ -52,6 +97,10 @@ export type SelectWebKnowledgeOptions = {
    * 一致しにくいため、実生成ではフォールバックを有効にする。
    */
   fallback?: boolean;
+  /** フォールバック時に注入する枚数 (既定 1。汎用助言でプロンプトを膨らませない) */
+  fallbackLimit?: number;
+  /** 文脈フィルタ (曲長・構成・編成・静けさ) */
+  context?: WebKnowledgeContext;
 };
 
 /**
@@ -66,7 +115,8 @@ export function selectWebKnowledge(
   opts: SelectWebKnowledgeOptions = {},
 ): WebKnowledgeCard[] {
   const p = prompt.toLowerCase();
-  const scored = cards
+  const available = opts.context ? cards.filter((c) => cardFitsContext(c, opts.context)) : cards;
+  const scored = available
     .map((card, index) => {
       let score = 0;
       for (const raw of card.keywords) {
@@ -87,21 +137,23 @@ export function selectWebKnowledge(
 
   if (!opts.fallback) return [];
   // 中核カテゴリのカードだけをフォールバック対象にする (無関係な専門カードは注入しない)
-  const pool = cards.filter((c) => CORE_CATEGORIES.has(c.category) && c.confidence >= 0.8);
+  const pool = available.filter((c) => CORE_CATEGORIES.has(c.category) && c.confidence >= 0.8);
   if (pool.length === 0) return [];
+  const count = Math.min(Math.max(1, opts.fallbackLimit ?? 1), limit, pool.length);
   const start = hashSeed(prompt.toLowerCase()) % pool.length;
-  return Array.from({ length: Math.min(limit, pool.length) }, (_, i) => pool[(start + i) % pool.length]!);
+  return Array.from({ length: count }, (_, i) => pool[(start + i) % pool.length]!);
 }
 
 /** 知識カードをプロンプト用ブロックへ。該当カードが無ければ空文字 */
 export function webKnowledgeGuidance(
   prompt: string,
   cards: readonly WebKnowledgeCard[] = WEB_KNOWLEDGE,
-  limit = 3,
+  limit = 2,
   opts: SelectWebKnowledgeOptions = {},
 ): string {
-  // 実生成ではリクエスト文がムード文でも指針が入るようフォールバックを既定で有効にする
-  const picked = selectWebKnowledge(prompt, cards, limit, { fallback: true, ...opts });
+  // 実生成ではリクエスト文がムード文でも指針が入るようフォールバックを既定で有効にするが、
+  // 汎用助言でプロンプトを汚さないよう1枚に絞る。
+  const picked = selectWebKnowledge(prompt, cards, limit, { fallback: true, fallbackLimit: 1, ...opts });
   if (picked.length === 0) return "";
   const lines = picked.map(
     (c) => `- [${c.category}] ${c.title}: ${c.advice.slice(0, 3).join(" ")} (source: ${c.sourceTitle})`,
@@ -111,6 +163,147 @@ export function webKnowledgeGuidance(
     "if they conflict with the request or the progression vocabulary, follow the request):\n" +
     lines.join("\n")
   );
+}
+
+// ---- ルール層: カードのスタイルタグを決定的な既定値補正へ移す ----
+
+/** タグ → 既存スタイル語彙への対応 (値は COMP_STYLES / BASS_STYLES / DRUM_PATTERN_NAMES と一致) */
+const TAG_TO_STYLE: Record<StyleTag, { comp?: string; bass?: string; drums?: string; swing?: number }> = {
+  groove: { comp: "syncopation" },
+  syncopation: { comp: "syncopation" },
+  halfTime: { drums: "halftime" },
+  walkingBass: { bass: "walking" },
+  arpeggio: { comp: "arpeggio" },
+  ostinato: { comp: "arpeggio16" },
+  swing: { drums: "swing", swing: 0.25 },
+  fourOnFloor: { drums: "fourOnFloor" },
+  powerChords: { comp: "chug" },
+  // callResponse / dynamics / counterpoint / hook / modal は具体的なスタイル語彙に
+  // 対応させず、プロンプト注入だけで扱う (誤った既定値補正を避ける)
+  callResponse: {},
+  dynamics: {},
+  sparse: { drums: "lofi" },
+  dense: { comp: "arpeggio16", bass: "sixteenths" },
+  modal: {},
+  counterpoint: {},
+  hook: {},
+};
+
+/**
+ * 同一フィールドに複数タグが対応する場合の優先順 (先頭ほど優先)。
+ * 例: 静かな曲で sparse と groove が付いたら sparse のドラムを優先する。
+ */
+const TAG_PRIORITY: readonly StyleTag[] = [
+  "swing",
+  "fourOnFloor",
+  "halfTime",
+  "walkingBass",
+  "powerChords",
+  "sparse",
+  "syncopation",
+  "arpeggio",
+  "ostinato",
+  "groove",
+  "dense",
+  "callResponse",
+  "dynamics",
+  "counterpoint",
+  "hook",
+  "modal",
+];
+
+/** 過密系タグ (カームなリクエストや simple では適用しない) */
+const DENSE_TAGS = new Set<StyleTag>(["dense", "ostinato"]);
+
+/** タグを優先順に並べる */
+function sortTags(tags: StyleTag[]): StyleTag[] {
+  return [...tags].sort((a, b) => TAG_PRIORITY.indexOf(a) - TAG_PRIORITY.indexOf(b));
+}
+
+export type WebStyleHints = {
+  comp?: string;
+  bass?: string;
+  drums?: string;
+  swing?: number;
+  /** 採用されたタグ (重複なし・カード選択順) */
+  tags: StyleTag[];
+};
+
+/** リクエストにマッチしたカードのスタイルタグを集約して、既定値補正のヒントにする */
+export function webStyleHints(
+  prompt: string,
+  cards: readonly WebKnowledgeCard[] = WEB_KNOWLEDGE,
+  opts: SelectWebKnowledgeOptions = {},
+): WebStyleHints {
+  // スタイル補正は誤適用の影響が大きいため、キーワードが実際に一致したカードだけを使う
+  // (汎用フォールバックカードのタグでジャンルに合わない comp/drums にしない)
+  const picked = selectWebKnowledge(prompt, cards, 3, { fallback: false, ...opts });
+  const tags: StyleTag[] = [];
+  for (const card of picked) {
+    for (const tag of card.styleTags ?? []) if (!tags.includes(tag)) tags.push(tag);
+  }
+  const hints: WebStyleHints = { tags };
+  for (const tag of sortTags(tags)) {
+    const m = TAG_TO_STYLE[tag];
+    if (m.swing !== undefined && hints.swing === undefined) hints.swing = m.swing;
+    if (m.comp !== undefined && hints.comp === undefined) hints.comp = m.comp;
+    if (m.bass !== undefined && hints.bass === undefined) hints.bass = m.bass;
+    if (m.drums !== undefined && hints.drums === undefined) hints.drums = m.drums;
+  }
+  return hints;
+}
+
+export type ApplyWebHintsOptions = {
+  prompt?: string;
+  /** false なら過密系タグ (dense / ostinato) を適用しない */
+  dense?: boolean;
+  /** テスト・A/B用のカード差し替え (省略時は生成済みカード) */
+  cards?: readonly WebKnowledgeCard[];
+  /** 文脈フィルタ (曲長・構成・編成・静けさ) */
+  bars?: number;
+  complexity?: "simple" | "standard" | "rich";
+  ensemble?: "band" | "orchestra";
+  calm?: boolean;
+};
+
+/**
+ * スタイルタグから導いた既定値補正をプランへ適用する。
+ * 既存の `applyCorpusHints` と同じ「スキーマ既定値のときだけ置換する」方針で、
+ * LLM が明示した comp/bass/drums は尊重する。
+ */
+export function applyWebHints(plan: Plan, opts: ApplyWebHintsOptions = {}): Plan {
+  const hints = webStyleHints(opts.prompt ?? "", opts.cards ?? WEB_KNOWLEDGE, {
+    context: {
+      bars: opts.bars,
+      complexity: opts.complexity,
+      ensemble: opts.ensemble ?? (plan.ensemble as "band" | "orchestra"),
+      calm: opts.calm,
+    },
+  });
+  const allowed = (t: StyleTag) => opts.dense !== false || !DENSE_TAGS.has(t);
+  const tags = hints.tags.filter(allowed);
+  if (tags.length === 0) return plan;
+  const applied: WebStyleHints = { tags };
+  for (const tag of sortTags(tags)) {
+    const m = TAG_TO_STYLE[tag];
+    if (m.swing !== undefined && applied.swing === undefined) applied.swing = m.swing;
+    if (m.comp !== undefined && applied.comp === undefined) applied.comp = m.comp;
+    if (m.bass !== undefined && applied.bass === undefined) applied.bass = m.bass;
+    if (m.drums !== undefined && applied.drums === undefined) applied.drums = m.drums;
+  }
+
+  const next: Plan = {
+    ...plan,
+    swing: plan.swing === 0 && applied.swing !== undefined ? applied.swing : plan.swing,
+  };
+  if (plan.ensemble === "orchestra" || plan.sections.length === 0) return next;
+  next.sections = plan.sections.map((s) => ({
+    ...s,
+    comp: s.comp === "pad" && applied.comp ? applied.comp : s.comp,
+    bass: s.bass === "root" && applied.bass ? applied.bass : s.bass,
+    drums: s.drums === "basic" && applied.drums ? applied.drums : s.drums,
+  }));
+  return next;
 }
 
 // ---- 収集スクリプト用の純粋ヘルパ (ネットワーク/LLM なしでテストできる) ----

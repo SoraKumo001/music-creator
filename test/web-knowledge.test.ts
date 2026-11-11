@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyWebHints,
+  cardFitsContext,
   chunkText,
   hasWebKnowledge,
   mergeKnowledgeCards,
   normalizeKnowledgeCard,
   selectWebKnowledge,
+  STYLE_TAGS,
+  webKnowledgeCards,
   webKnowledgeGuidance,
+  webStyleHints,
+  type StyleTag,
   type WebKnowledgeCard,
 } from "../src/knowledge/web-knowledge";
+import { PlanSchema } from "../src/plan";
 import { planMessages } from "../src/prompt";
 
 const source = { url: "https://example.org/a", title: "Example source", license: "CC BY-SA 4.0" };
@@ -160,6 +167,93 @@ describe("normalizeKnowledgeCard", () => {
       0,
     );
     expect(unknown!.category).toBe("theory");
+  });
+});
+
+describe("webStyleHints / applyWebHints", () => {
+  const styleCards = [
+    card({ id: "drive", keywords: ["疾走"], styleTags: ["powerChords", "dense"] as StyleTag[] }),
+    card({ id: "calm", keywords: ["静か"], styleTags: ["sparse", "swing"] as StyleTag[] }),
+  ];
+  const basePlan = () =>
+    PlanSchema.parse({ bpm: 120, key: "C major", chords: [[0, "C"]], sections: [{ name: "A", bars: 8 }] });
+
+  it("aggregates tags from matched cards into style hints", () => {
+    const hints = webStyleHints("疾走する曲", styleCards);
+    expect(hints.tags).toEqual(["powerChords", "dense"]);
+    expect(hints.comp).toBe("chug");
+    expect(hints.bass).toBe("sixteenths");
+  });
+
+  it("applies hints only to schema defaults and respects explicit styles", () => {
+    const out = applyWebHints(basePlan(), { prompt: "疾走する曲", dense: true, cards: styleCards });
+    expect(out.sections[0]!.comp).toBe("chug");
+    expect(out.sections[0]!.bass).toBe("sixteenths");
+
+    const explicit = PlanSchema.parse({
+      bpm: 120,
+      key: "C major",
+      chords: [[0, "C"]],
+      sections: [{ name: "A", bars: 8, comp: "block", bass: "walking", drums: "rock" }],
+    });
+    const kept = applyWebHints(explicit, { prompt: "疾走する曲", dense: true, cards: styleCards });
+    expect(kept.sections[0]!.comp).toBe("block");
+    expect(kept.sections[0]!.bass).toBe("walking");
+    expect(kept.sections[0]!.drums).toBe("rock");
+  });
+
+  it("ignores dense tags when dense is false", () => {
+    const denseOnly = [card({ keywords: ["疾走"], styleTags: ["dense"] as StyleTag[] })];
+    const out = applyWebHints(basePlan(), { prompt: "疾走する曲", dense: false, cards: denseOnly });
+    expect(out.sections[0]!.comp).toBe("pad");
+    expect(out.sections[0]!.bass).toBe("root");
+  });
+
+  it("sets swing only when the plan leaves it at 0", () => {
+    const swingCard = [card({ keywords: ["静か"], styleTags: ["swing"] as StyleTag[] })];
+    expect(applyWebHints(basePlan(), { prompt: "静かな曲", cards: swingCard }).swing).toBeCloseTo(0.25);
+    const swung = PlanSchema.parse({ bpm: 120, key: "C major", swing: 0.33, chords: [[0, "C"]], sections: [{ name: "A", bars: 8 }] });
+    expect(applyWebHints(swung, { prompt: "静かな曲", cards: swingCard }).swing).toBe(0.33);
+  });
+
+  it("does not touch section styles for orchestra plans", () => {
+    const orchestra = PlanSchema.parse({
+      bpm: 120,
+      key: "C major",
+      ensemble: "orchestra",
+      chords: [[0, "C"]],
+      sections: [{ name: "A", bars: 8 }],
+    });
+    expect(applyWebHints(orchestra, { prompt: "疾走する曲", dense: true, cards: styleCards }).sections[0]!.comp).toBe("pad");
+  });
+
+  it("contains no style tags outside the fixed vocabulary", () => {
+    for (const c of webKnowledgeCards) {
+      for (const t of c.styleTags ?? []) expect(STYLE_TAGS).toContain(t);
+    }
+  });
+});
+
+describe("cardFitsContext", () => {
+  it("filters long-form advice for short songs", () => {
+    const modulation = card({ title: "Modulate to shape form", keywords: ["modulation"], advice: ["Use modulation to articulate sections."] });
+    expect(cardFitsContext(modulation, { bars: 8 })).toBe(false);
+    expect(cardFitsContext(modulation, { bars: 16 })).toBe(true);
+  });
+
+  it("filters orchestration advice for bands and dense advice for calm requests", () => {
+    const orchestra = card({ title: "Orchestration basics", advice: ["Write idiomatic orchestration."] });
+    expect(cardFitsContext(orchestra, { ensemble: "band" })).toBe(false);
+    expect(cardFitsContext(orchestra, { ensemble: "orchestra" })).toBe(true);
+    const dense = card({ title: "Dense ostinato", advice: ["Drive with a dense ostinato."] });
+    expect(cardFitsContext(dense, { calm: true })).toBe(false);
+    expect(cardFitsContext(dense, { calm: false })).toBe(true);
+  });
+
+  it("is applied by selectWebKnowledge when a context is given", () => {
+    const cards = [card({ title: "Modulation", keywords: ["歌"], advice: ["Use modulation."] })];
+    expect(selectWebKnowledge("歌", cards, 2, { context: { bars: 8 } })).toEqual([]);
+    expect(selectWebKnowledge("歌", cards, 2, { context: { bars: 16 } }).length).toBe(1);
   });
 });
 

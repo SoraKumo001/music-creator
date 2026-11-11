@@ -271,7 +271,11 @@ The arrangement will be ORCHESTRAL (strings, woodwinds, brass, timpani, harp). F
         progressionBlock(progc) +
         (mode !== undefined ? variationBlock(opts.seed!, progc, cards, userPrompt, mode) : "") +
         (opts.corpus === false ? "" : corpusGuidance()) +
-        (opts.web === false ? "" : webKnowledgeGuidance(userPrompt)) +
+        (opts.web === false
+          ? ""
+          : webKnowledgeGuidance(userPrompt, undefined, 2, {
+              context: { bars, complexity: opts.complexity, ensemble },
+            })) +
         complexityBlock(bars, opts.complexity) +
         endingRule +
         ensembleRule,

@@ -28,4 +28,13 @@ describe("playback defaults", () => {
     expect(m).not.toBeNull();
     expect(Number(m![1])).toBeGreaterThan(0);
   });
+
+  it("keeps the web knowledge toggle off by default (opt-in) but sends/restores it", () => {
+    // A/B実測でコーパス適合度が下がったため既定OFF。ユーザーが明示的にONにできる
+    const input = /<input id="webKnowledge"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(input).not.toBe("");
+    expect(input).not.toMatch(/\bchecked\b/);
+    expect(html).toContain('webKnowledge: $("webKnowledge").checked');
+    expect(html).toContain("full.request.webKnowledge");
+  });
 });

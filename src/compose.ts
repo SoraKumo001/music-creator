@@ -59,6 +59,7 @@ import {
   corpusRuleHints,
   isCalmPrompt,
 } from "./knowledge/corpus";
+import { applyWebHints } from "./knowledge/web-knowledge";
 import { validatePlan, type Issue } from "./theory/validate";
 import { evaluateComplexity, type ComplexitySummary } from "./eval/complexity";
 
@@ -308,8 +309,15 @@ export type ComposeOptions = {
   corpusPrompt?: boolean;
   /** コーパス統計をルール層へ適用するか (既定 true) */
   corpusRules?: boolean;
-  /** Web由来の知識カードをプロンプトへ入れるか (既定 true。A/B計測用) */
+  /**
+   * Web由来の知識カードを使うか (既定 false = opt-in)。
+   * A/B実測でコーパス適合度が下がったため、既定では生成に使わない。
+   */
   webKnowledge?: boolean;
+  /** Web知識のプロンプト注入だけを個別に有効化する (A/B計測用) */
+  webPrompt?: boolean;
+  /** Web知識のルール層補正だけを個別に有効化する (A/B計測用) */
+  webRules?: boolean;
 };
 
 const TEMPS = [0.7, 0.9, 1.1, 0.8, 1.3];
@@ -368,6 +376,9 @@ export async function compose(
   const rng = mulberry32(seed);
   // コーパス知見をプロンプトへ入れるか (モードの事前分布にも使う)
   const useCorpusPrompt = opts.corpus !== false && opts.corpusPrompt !== false;
+  // Web知識カード: 既定はOFF (opt-in)。プロンプト注入とルール層補正を個別に有効化できる
+  const useWebPrompt = opts.webKnowledge === true && opts.webPrompt !== false;
+  const useWebRules = opts.webKnowledge === true && opts.webRules !== false;
   // この生成で使うモード (長調/短調)。プロンプトにも明示し、LLM が無視したら作り直させる
   const targetMode = pickMode(prompt, seed, { corpusPrior: useCorpusPrompt });
   cfg = { ...cfg, sessionId: cfg.sessionId ?? "mc-" + crypto.randomUUID() };
@@ -383,7 +394,7 @@ export async function compose(
     creativity,
     complexity,
     corpus: useCorpusPrompt,
-    web: opts.webKnowledge !== false,
+    web: useWebPrompt,
   });
   let plan: Plan | undefined;
   /**
@@ -532,6 +543,16 @@ export async function compose(
     const colored = colorPlan(plan, bars, seed, { strength });
     plan = colored.plan;
   }
+  // Web知識カードのスタイルタグによる既定値補正 (コーパス補正より先に適用して優先させる)
+  if (useWebRules)
+    plan = applyWebHints(plan, {
+      prompt,
+      dense: complexity !== "simple" && !isCalmPrompt(prompt),
+      bars,
+      complexity,
+      ensemble: plan.ensemble,
+      calm: isCalmPrompt(prompt),
+    });
   // ルール層にもコーパスを反映 (corpus:false でA/B計測可)
   if (opts.corpus !== false && opts.corpusRules !== false)
     plan = applyCorpusHints(plan, { prompt, dense: complexity !== "simple" });
