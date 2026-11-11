@@ -4,8 +4,8 @@
 import type { CorpusProfile } from "../analyze/corpus";
 
 export const CORPUS_PROFILE: CorpusProfile | null = {
-  "version": 2,
-  "generatedAt": "2026-11-11T04:39:01.901Z",
+  "version": 3,
+  "generatedAt": "2026-11-11T04:52:40.034Z",
   "source": {
     "label": "midi-corpus",
     "files": 40,
@@ -66,6 +66,54 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
     "48": 0.021,
     "82": 0.066
   },
+  "drumByEnergy": {
+    "densityTertiles": [
+      47.33,
+      78.8
+    ],
+    "low": {
+      "sections": 80,
+      "shares": {
+        "35": 0.023,
+        "36": 0.309,
+        "38": 0.228,
+        "40": 0.044,
+        "42": 0.192,
+        "44": 0.037,
+        "46": 0.023,
+        "51": 0.055
+      },
+      "medianHitsPerBar": 8.8
+    },
+    "mid": {
+      "sections": 80,
+      "shares": {
+        "35": 0.049,
+        "36": 0.17,
+        "38": 0.342,
+        "42": 0.237,
+        "46": 0.023,
+        "48": 0.013,
+        "65": 0.016,
+        "82": 0.093
+      },
+      "medianHitsPerBar": 14.7
+    },
+    "high": {
+      "sections": 78,
+      "shares": {
+        "35": 0.04,
+        "36": 0.22,
+        "38": 0.18,
+        "40": 0.051,
+        "42": 0.299,
+        "48": 0.036,
+        "53": 0.016,
+        "82": 0.076
+      },
+      "medianHitsPerBar": 11.8
+    }
+  },
   "rhythm": {
     "beatPos16": [
       0.0731,
@@ -108,7 +156,8 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
       0.0294
     ],
     "medianMelodyNotesPerBar": 7.38,
-    "medianMelodyRange": 31
+    "medianMelodyRange": 31,
+    "drumHitsPerBar": 12.65
   },
   "harmony": {
     "medianChordsPerBar": 1,
@@ -298,6 +347,7 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
     "Mode: major 53% / minor 48% — the corpus uses both about equally; match the mode to the request (bright/heroic material tends major) and do not default to minor.",
     "Instrument focus (by note count): synthLead 26%, guitar 21%, bass 16%, brass 8%.",
     "Drum emphasis: acousticBassDrum 4%, bassDrum 22%, snare 25%, electricSnare 4%.",
+    "Drum emphasis by section density (47.33-78.8 onsets/bar): low (8.8 hits/bar): acousticBassDrum 2%, bassDrum 31%, snare 23%; mid (14.7 hits/bar): acousticBassDrum 5%, bassDrum 17%, snare 34%; high (11.8 hits/bar): acousticBassDrum 4%, bassDrum 22%, snare 18%.",
     "Rhythm: downbeat onsets 27%, off-beat 8ths 25%, 16ths 48%, other subdivisions 37%.",
     "Harmonic rhythm: about 1 chord(s) per bar; borrowed/secondary chords in about 39% of chord slots.",
     "Chord qualities: 5 5%, 7 11%, sus4 23%, m7 21%; sus chords 26%, 7th chords 45%.",

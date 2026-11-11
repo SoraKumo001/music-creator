@@ -49,11 +49,12 @@ function melodyFor(plan: ReturnType<typeof PlanSchema.parse>, bars: number): Not
 if (!corpusProfile) throw new Error("corpus profile is missing");
 const corpusSus = Math.max(0.05, Math.min(0.5, corpusProfile.harmony.susShare));
 
-type Variant = { name: string; susProbability: number; useStyleFit: boolean };
+type Variant = { name: string; susProbability: number; useStyleFit: boolean; useDrumDensityFit: boolean };
 const VARIANTS: Variant[] = [
-  { name: "styleFit+corpusSus", susProbability: corpusSus, useStyleFit: true },
-  { name: "styleFit+legacySus", susProbability: 0.35, useStyleFit: true },
-  { name: "noStyleFit", susProbability: corpusSus, useStyleFit: false },
+  { name: "styleFit+corpusSus", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true },
+  { name: "styleFit+legacySus", susProbability: 0.35, useStyleFit: true, useDrumDensityFit: true },
+  { name: "noStyleFit", susProbability: corpusSus, useStyleFit: false, useDrumDensityFit: true },
+  { name: "noDrumDensity", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: false },
 ];
 
 type Row = {
@@ -78,12 +79,25 @@ for (const file of files) {
     ...sourceChords.map(([b, s]) => [b + spanBeats, s] as [number, string]),
   ];
   const bars = fixture.bars * 2;
-  const base = PlanSchema.parse({ ...fixture.plan, chords, bpm: 125, timeSignature: [4, 4] });
+  // 16小節を 4小節×4セクションに分け、energy 1/2/3 と intro/verse/chorus を混在させる
+  // (コーパス側の「セクションエネルギー別ドラム」を評価に反映するため)
+  const sections = [
+    { name: "Intro", bars: 4, energy: 1, role: "intro" },
+    { name: "Verse", bars: 4, energy: 2, role: "verse" },
+    { name: "Chorus", bars: 4, energy: 3, role: "chorus" },
+    { name: "Verse2", bars: 4, energy: 2, role: "verse" },
+  ];
+  const base = PlanSchema.parse({ ...fixture.plan, chords, bpm: 125, timeSignature: [4, 4], sections });
 
   for (const variant of VARIANTS) {
     for (const seed of SEEDS) {
       const plan = colorPlan(base, bars, seed, { strength: 0.8, susProbability: variant.susProbability }).plan;
-      const hinted = applyCorpusHints(plan, { prompt: fixture.name, dense: true, useStyleFit: variant.useStyleFit });
+      const hinted = applyCorpusHints(plan, {
+        prompt: fixture.name,
+        dense: true,
+        useStyleFit: variant.useStyleFit,
+        useDrumDensityFit: variant.useDrumDensityFit,
+      });
       const beatsPerBar = (hinted.timeSignature[0] * 4) / hinted.timeSignature[1];
       const sections = resolveSections(hinted, bars, beatsPerBar);
       const melody = melodyFor(hinted, bars);
@@ -103,7 +117,7 @@ for (const file of files) {
   }
 }
 
-const parts = ["tempo", "mode", "meter", "instruments", "rhythm", "drums", "harmonicRhythm", "chordQualities", "borrowed", "form"] as const;
+const parts = ["tempo", "mode", "meter", "instruments", "rhythm", "drums", "drumDensity", "harmonicRhythm", "chordQualities", "borrowed", "form"] as const;
 const summarize = (variant: string) => {
   const rs = rows.filter((r) => r.variant === variant);
   return {

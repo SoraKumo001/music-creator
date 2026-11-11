@@ -8,7 +8,7 @@ import { CORPUS_PROFILE } from "./corpus-profile.generated";
 import type { CorpusProfile } from "../analyze/corpus";
 import type { Plan } from "../plan";
 import { COMP_STYLES, BASS_STYLES } from "../theory/accompaniment";
-import { drumPatternPitchShares, DRUM_PATTERN_NAMES } from "../theory/drums";
+import { drumPatternHitsPerBar, drumPatternPitchShares, DRUM_PATTERN_NAMES } from "../theory/drums";
 import { corpusStyleFit, normalizedStyleScores } from "./styleMatch";
 
 export const corpusProfile: CorpusProfile | null = CORPUS_PROFILE;
@@ -25,6 +25,8 @@ export function hasCorpusProfile(): boolean {
 export type CorpusRuleHints = {
   /** コーパスのドラム構成に近いパターン名 (近い順) */
   drumPatterns: string[];
+  /** セクションの energy (1=低密度/2=中/3=高) ごとに近いドラムパターン名 (近い順) */
+  drumPatternsByEnergy: { 1: string[]; 2: string[]; 3: string[] };
   /** コーパスの細分性に合う comp スタイル (近い順) */
   compStyles: string[];
   /** bass スタイル (近い順) */
@@ -64,22 +66,36 @@ export function corpusRuleHints(opts: CorpusHintOptions = {}): CorpusRuleHints |
   if (!p) return null;
 
   // --- ドラム: コーパスの GM 音別の出現比に最も近いパターンを上位に ---
-  const target = corpusDrumShares(p);
-  const targetKeys = Object.keys(target);
   const patternShares = drumPatternPitchShares();
-  const drumPatterns = [...DRUM_PATTERN_NAMES]
-    .map((name) => {
-      const shares = patternShares[name] ?? {};
-      // 比較はコーパスに出現する音の集合で行う (パターンに無い音は0)
-      const a = targetKeys.map((k) => target[k] ?? 0);
-      const b = targetKeys.map((k) => shares[k] ?? 0);
-      const na = Math.sqrt(a.reduce((s, x) => s + x * x, 0));
-      const nb = Math.sqrt(b.reduce((s, x) => s + x * x, 0));
-      const dot = a.reduce((s, x, i) => s + x * b[i]!, 0);
-      return { name, score: na === 0 || nb === 0 ? 0 : dot / (na * nb) };
-    })
-    .sort((x, y) => y.score - x.score)
-    .map((x) => x.name);
+  const patternHits = drumPatternHitsPerBar();
+  const densityFit = opts.useDrumDensityFit !== false;
+  const rankPatterns = (target: Record<string, number>, targetHitsPerBar?: number): string[] => {
+    const keys = Object.keys(target);
+    return [...DRUM_PATTERN_NAMES]
+      .map((name) => {
+        const shares = patternShares[name] ?? {};
+        // 比較はコーパスに出現する音の集合で行う (パターンに無い音は0)
+        const a = keys.map((k) => target[k] ?? 0);
+        const b = keys.map((k) => shares[k] ?? 0);
+        let score = cos(a, b);
+        // 低密度セクションに16分主体のパターンを選ばない (過密方向だけ抑える)
+        if (densityFit && targetHitsPerBar !== undefined && targetHitsPerBar > 0) {
+          const hits = patternHits[name] ?? 0;
+          const limit = targetHitsPerBar * 1.4;
+          if (hits > limit) score -= Math.min(1, (hits - limit) / Math.max(1, limit)) * 0.5;
+        }
+        return { name, score };
+      })
+      .sort((x, y) => y.score - x.score)
+      .map((x) => x.name);
+  };
+  const drumPatterns = rankPatterns(corpusDrumShares(p));
+  // セクション energy (1=低密度/2=中/3=高) 別に、コーパスの実測ドラム構成へ寄せる
+  const drumPatternsByEnergy = {
+    1: rankPatterns(p.drumByEnergy.low.shares, p.drumByEnergy.low.medianHitsPerBar),
+    2: rankPatterns(p.drumByEnergy.mid.shares, p.drumByEnergy.mid.medianHitsPerBar),
+    3: rankPatterns(p.drumByEnergy.high.shares, p.drumByEnergy.high.medianHitsPerBar),
+  };
 
   // --- comp: 細分性に合わせる (16分が多い→刻む、ダウンビート多い→ブロック) ---
   const r = p.rhythm;
@@ -130,6 +146,7 @@ export function corpusRuleHints(opts: CorpusHintOptions = {}): CorpusRuleHints |
 
   return {
     drumPatterns,
+    drumPatternsByEnergy,
     compStyles,
     bassStyles,
     programs,
@@ -208,6 +225,8 @@ export type CorpusHintOptions = {
   dense?: boolean;
   /** false ならコーパスのオンセット分布によるスタイル適合度を使わない (A/B/回帰用) */
   useStyleFit?: boolean;
+  /** false なら energy 別ドラムの密度制約を使わない (A/B/回帰用) */
+  useDrumDensityFit?: boolean;
 };
 
 /** 旋律生成プロンプト用: コーパスの旋律の鳴り方を短く渡す (統計のみ) */
@@ -280,19 +299,26 @@ export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan
 
   // セクション内のスタイルも「既定値のときだけ」コーパスの傾向へ寄せる
   // 既定値: comp="pad", bass="root", drums="basic"
+  const patternsFor = (energy: number): string[] =>
+    energy <= 1
+      ? hints.drumPatternsByEnergy[1]
+      : energy >= 3
+        ? hints.drumPatternsByEnergy[3]
+        : hints.drumPatternsByEnergy[2];
   const drumFor = (energy: number, role: string, idx: number): string => {
+    const patterns = patternsFor(energy);
     if (energy <= 1 || role === "intro" || role === "outro") {
-      // 静かなセクションは控えめなパターンを残す
-      const sparse = hints.drumPatterns.find((d) => d === "halftime" || d === "lofi");
-      if (sparse) return sparse;
+      // 静かなセクション: 低密度セクションのコーパス構成に最も近いパターン
+      return patterns[0] ?? hints.drumPatterns[0] ?? "halftime";
     }
     if (role === "bridge") {
-      return hints.drumPatterns.find((d) => d === "halftime" || d === "shuffle") ?? hints.drumPatterns[1] ?? "halftime";
+      return patterns[1] ?? patterns[0] ?? hints.drumPatterns[0] ?? "halftime";
     }
     if (role === "chorus" || energy >= 3) {
-      return hints.drumPatterns.find((d) => d === "game16th" || d === "corpus7" || d === "corpus8") ?? hints.drumPatterns[0] ?? "rock";
+      // 高密度セクションのコーパス構成に最も近いパターン
+      return patterns[0] ?? hints.drumPatterns[0] ?? "rock";
     }
-    return hints.drumPatterns[idx % Math.max(1, Math.min(2, hints.drumPatterns.length))] ?? "basic";
+    return patterns[idx % Math.max(1, Math.min(2, patterns.length))] ?? "basic";
   };
   const isCalm = isCalmPrompt(opts.prompt);
   const isDriving = isDrivingPrompt(opts.prompt);

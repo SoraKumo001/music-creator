@@ -6,7 +6,7 @@
 import { parseKeyName } from "../theory/key";
 import { programFamily, type MidiFeatures } from "./features";
 
-export const CORPUS_PROFILE_VERSION = 2;
+export const CORPUS_PROFILE_VERSION = 3;
 
 export type CorpusProfile = {
   version: number;
@@ -27,6 +27,16 @@ export type CorpusProfile = {
   instruments: Record<string, number>;
   /** ドラム GM 番号の出現割合 */
   drums: Record<string, number>;
+  /**
+   * セクション密度 (energy の代理) 別のドラム構成。
+   * density は非ドラムのオンセット数 / 小節。
+   */
+  drumByEnergy: {
+    densityTertiles: [number, number];
+    low: { sections: number; shares: Record<string, number>; medianHitsPerBar: number };
+    mid: { sections: number; shares: Record<string, number>; medianHitsPerBar: number };
+    high: { sections: number; shares: Record<string, number>; medianHitsPerBar: number };
+  };
   rhythm: {
     /** 小節内16ステップの平均オンセット分布 (合計1) */
     beatPos16: number[];
@@ -38,6 +48,8 @@ export type CorpusProfile = {
     durations16: number[];
     medianMelodyNotesPerBar: number;
     medianMelodyRange: number;
+    /** ドラムの1小節あたりヒット数 (中央値) */
+    drumHitsPerBar: number;
   };
   harmony: {
     medianChordsPerBar: number;
@@ -197,6 +209,36 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
     drums[k] = round(v / Math.max(1, drumTotal), 3);
   }
 
+  // ---- セクション密度 (energy 代理) 別のドラム構成 ----
+  const sectionsWithDrums = features.flatMap((f) =>
+    f.sectionStats.filter((s) => s.drumTotal > 0).map((s) => ({ ...s, density: s.density })),
+  );
+  const energyBuckets = { low: new Map<string, number>(), mid: new Map<string, number>(), high: new Map<string, number>() };
+  const bucketHitsPerBar = { low: [] as number[], mid: [] as number[], high: [] as number[] };
+  const bucketSectionCounts = { low: 0, mid: 0, high: 0 };
+  let densityTertiles: [number, number] = [0, 0];
+  if (sectionsWithDrums.length > 0) {
+    const densities = sectionsWithDrums.map((s) => s.density).sort((a, b) => a - b);
+    const q1 = quantile(densities, 1 / 3);
+    const q2 = quantile(densities, 2 / 3);
+    densityTertiles = [round(q1, 2), round(q2, 2)];
+    for (const section of sectionsWithDrums) {
+      const bucket = section.density <= q1 ? "low" : section.density > q2 ? "high" : "mid";
+      bucketSectionCounts[bucket]++;
+      bucketHitsPerBar[bucket].push(section.drumTotal / Math.max(1, section.bars));
+      for (const [pitch, shareValue] of Object.entries(section.drumShares)) {
+        const hits = shareValue * section.drumTotal;
+        energyBuckets[bucket].set(pitch, (energyBuckets[bucket].get(pitch) ?? 0) + hits);
+      }
+    }
+  }
+  const sharesOf = (m: Map<string, number>): Record<string, number> => {
+    const total = [...m.values()].reduce((a, b) => a + b, 0);
+    const out: Record<string, number> = {};
+    for (const [k, v] of [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)) out[k] = round(v / Math.max(1, total), 3);
+    return out;
+  };
+
   // ---- リズム ----
   const rhythmFiles = features.filter((f) => f.stepsPerBar <= 24);
   const beatPos16 = averageHistograms(rhythmFiles.map((f) => f.beatPos12));
@@ -293,6 +335,24 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
     modeShare: { major: round(major / Math.max(1, features.length), 3), minor: round(minor / Math.max(1, features.length), 3) },
     instruments,
     drums,
+    drumByEnergy: {
+      densityTertiles,
+      low: {
+        sections: bucketSectionCounts.low,
+        shares: sharesOf(energyBuckets.low),
+        medianHitsPerBar: round(median(bucketHitsPerBar.low), 1),
+      },
+      mid: {
+        sections: bucketSectionCounts.mid,
+        shares: sharesOf(energyBuckets.mid),
+        medianHitsPerBar: round(median(bucketHitsPerBar.mid), 1),
+      },
+      high: {
+        sections: bucketSectionCounts.high,
+        shares: sharesOf(energyBuckets.high),
+        medianHitsPerBar: round(median(bucketHitsPerBar.high), 1),
+      },
+    },
     rhythm: {
       beatPos16,
       downbeatShare: round(mean(rhythmFiles.map((f) => f.downbeatShare)), 3),
@@ -302,6 +362,7 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
       durations16,
       medianMelodyNotesPerBar: round(median(features.map((f) => f.melodyNotesPerBar)), 2),
       medianMelodyRange: round(median(features.map((f) => f.melodyRange)), 1),
+      drumHitsPerBar: round(median(features.map((f) => Object.values(f.drumHits).reduce((a, b) => a + b, 0) / Math.max(1, f.bars))), 2),
     },
     harmony: {
       medianChordsPerBar: round(median(harmonyFiles.map((f) => f.chordsPerBar)), 2),
@@ -375,6 +436,19 @@ export function buildInsights(p: CorpusProfile): string[] {
 
   const topDrums = Object.entries(p.drums).slice(0, 4).map(([k, v]) => `${drumName(Number(k))} ${pct(v)}`);
   if (topDrums.length > 0) out.push(`Drum emphasis: ${topDrums.join(", ")}.`);
+
+  const energyDrums = (["low", "mid", "high"] as const)
+    .map((bucket) => {
+      const top = Object.entries(p.drumByEnergy[bucket].shares)
+        .slice(0, 3)
+        .map(([k, v]) => `${drumName(Number(k))} ${pct(v)}`)
+        .join(", ");
+      return top ? `${bucket} (${p.drumByEnergy[bucket].medianHitsPerBar} hits/bar): ${top}` : "";
+    })
+    .filter((s) => s !== "");
+  if (energyDrums.length > 0) {
+    out.push(`Drum emphasis by section density (${p.drumByEnergy.densityTertiles[0]}-${p.drumByEnergy.densityTertiles[1]} onsets/bar): ${energyDrums.join("; ")}.`);
+  }
 
   out.push(
     `Rhythm: downbeat onsets ${pct(p.rhythm.downbeatShare)}, off-beat 8ths ${pct(p.rhythm.offbeat8thShare)}, ` +

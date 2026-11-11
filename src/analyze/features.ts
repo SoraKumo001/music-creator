@@ -67,6 +67,17 @@ export type MidiFeatures = {
   borrowedRate: number;
   /** 平均セクション長 (小節)。構成検出できない場合は全体 */
   sectionBars: number[];
+  /**
+   * セクションごとのドラム構成と密度 (energy 別の統計に使う)。
+   * density は非ドラムのオンセット数 / 小節。
+   */
+  sectionStats: {
+    bars: number;
+    density: number;
+    drumTotal: number;
+    /** ドラムGM番号の出現割合 (合計1。ドラムが無ければ空) */
+    drumShares: Record<string, number>;
+  }[];
   /** 最高声部の音程ヒストグラム (半音, 絶対値) */
   intervalHistogram: number[];
   /** 旋律の音域 (半音) */
@@ -528,6 +539,28 @@ export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOpt
 
   const sections = detectSections(notes, barTicks, bars, startTick);
 
+  // ---- セクション別のドラム構成と密度 (energy 別ドラム統計用) ----
+  const drumNotes = notes.filter((n) => n.channel === 9);
+  const nonDrumOnsets = notes.filter((n) => n.channel !== 9).map((n) => n.tick);
+  const sectionStats: MidiFeatures["sectionStats"] = [];
+  let sectionStartBar = 0;
+  for (const len of sections) {
+    const from = startTick + sectionStartBar * barTicks;
+    const to = from + len * barTicks;
+    const hits = drumNotes.filter((n) => n.tick >= from && n.tick < to);
+    const onsets = nonDrumOnsets.filter((t) => t >= from && t < to).length;
+    const shares: Record<string, number> = {};
+    for (const n of hits) shares[String(n.pitch)] = (shares[String(n.pitch)] ?? 0) + 1;
+    const total = hits.length;
+    sectionStats.push({
+      bars: len,
+      density: round(onsets / Math.max(1, len), 2),
+      drumTotal: total,
+      drumShares: total === 0 ? {} : Object.fromEntries(Object.entries(shares).map(([k, v]) => [k, round(v / total, 3)])),
+    });
+    sectionStartBar += len;
+  }
+
   // ---- ベース声部 (GM 32-39。無ければ低音域から代用) ----
   const nonDrum = notes.filter((n) => n.channel !== 9);
   const bassProgramNotes = nonDrum.filter((n) => n.program >= 32 && n.program <= 39);
@@ -622,6 +655,7 @@ export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOpt
     romanBigrams: harmony.bigrams,
     borrowedRate: harmony.borrowedRate,
     sectionBars: sections,
+    sectionStats,
     intervalHistogram: normalizeHistogram(intervals),
     melodyRange,
     melodyNotesPerBar: round(top.length / bars, 2),

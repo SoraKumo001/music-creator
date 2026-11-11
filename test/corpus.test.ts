@@ -7,6 +7,7 @@ import { PlanSchema, resolveSections } from "../src/plan";
 import { planMessages } from "../src/prompt";
 import { assemble } from "../src/compose";
 import { extractMidiLinks } from "../src/analyze/links";
+import { drumPatternHitsPerBar } from "../src/theory/drums";
 
 /** テスト用の最小フィーチャを作る */
 function feature(overrides: Partial<MidiFeatures> = {}): MidiFeatures {
@@ -63,6 +64,12 @@ function feature(overrides: Partial<MidiFeatures> = {}): MidiFeatures {
       lead: { notes: 300, notesPerBar: 2, medianPitch: 76 },
       pad: { notes: 300, notesPerBar: 2, medianPitch: 60 },
     },
+    sectionStats: [
+      { bars: 8, density: 20, drumTotal: 40, drumShares: { "36": 0.3, "38": 0.3, "42": 0.4 } },
+      { bars: 8, density: 40, drumTotal: 80, drumShares: { "36": 0.25, "38": 0.25, "42": 0.5 } },
+      { bars: 8, density: 70, drumTotal: 120, drumShares: { "36": 0.3, "38": 0.2, "42": 0.5 } },
+      { bars: 8, density: 90, drumTotal: 160, drumShares: { "36": 0.2, "38": 0.3, "42": 0.5 } },
+    ],
     ...overrides,
   };
 }
@@ -70,7 +77,7 @@ function feature(overrides: Partial<MidiFeatures> = {}): MidiFeatures {
 describe("aggregateFeatures", () => {
   it("builds a profile from features", () => {
     const profile = aggregateFeatures([feature(), feature({ bpm: 140, key: "C major" })], { label: "test" });
-    expect(profile.version).toBe(2);
+    expect(profile.version).toBe(3);
     expect(profile.source.label).toBe("test");
     expect(profile.source.files).toBe(2);
     expect(profile.tempo.median).toBeGreaterThan(120);
@@ -82,6 +89,13 @@ describe("aggregateFeatures", () => {
     expect(profile.harmony.medianChordsPerBar).toBe(1.5);
     expect(profile.rhythm.sixteenthShare).toBeCloseTo(0.45);
     expect(profile.form.medianSectionBars).toBe(8);
+    // v3: セクション密度別のドラム構成
+    expect(profile.rhythm.drumHitsPerBar).toBeGreaterThan(0);
+    expect(profile.drumByEnergy.low.sections).toBeGreaterThan(0);
+    expect(profile.drumByEnergy.mid.sections).toBeGreaterThan(0);
+    expect(profile.drumByEnergy.high.sections).toBeGreaterThan(0);
+    expect(profile.drumByEnergy.low.medianHitsPerBar).toBeGreaterThan(0);
+    expect(profile.insights.join(" ")).toContain("by section density");
     // v2: ベース・旋律・楽器レジスタ・sus/7th の統計
     expect(profile.bass.medianNotesPerBar).toBeGreaterThan(0);
     expect(profile.bass.motionHistogram.length).toBe(12);
@@ -146,7 +160,7 @@ describe("evaluateCorpusFit", () => {
 describe("generated profile", () => {
   it("is either absent or a well-formed profile", () => {
     if (corpusProfile === null) return;
-    expect(corpusProfile.version).toBe(2);
+    expect(corpusProfile.version).toBe(3);
     expect(corpusProfile.source.analyzed).toBeGreaterThan(0);
     expect(corpusProfile.insights.length).toBeGreaterThan(0);
     expect(corpusProfile.rhythm.beatPos16.length).toBeGreaterThan(0);
@@ -183,12 +197,38 @@ describe("generated profile", () => {
     }
     expect(hints).not.toBeNull();
     expect(hints!.drumPatterns.length).toBeGreaterThan(3);
+    expect(hints!.drumPatternsByEnergy[1].length).toBeGreaterThan(3);
+    expect(hints!.drumPatternsByEnergy[2].length).toBeGreaterThan(3);
+    expect(hints!.drumPatternsByEnergy[3].length).toBeGreaterThan(3);
+    // 低密度セクションには高密度セクションより詰まったパターンを選ばない (上限のみ)
+    const hitsPerBar = drumPatternHitsPerBar();
+    expect(hitsPerBar[hints!.drumPatternsByEnergy[1][0]!] ?? 0).toBeLessThanOrEqual(
+      (hitsPerBar[hints!.drumPatternsByEnergy[3][0]!] ?? 0) + 2,
+    );
     expect(hints!.compStyles.length).toBeGreaterThan(3);
     expect(hints!.bassStyles.length).toBeGreaterThan(2);
     expect(hints!.programs.bass).toBe(33);
     expect(hints!.sectionBars).toBeGreaterThanOrEqual(2);
     // ドラムは構成比の近い順に並ぶ
     expect(typeof hints!.drumPatterns[0]).toBe("string");
+  });
+
+  it("picks drum patterns per section energy from the profile", () => {
+    const hints = corpusRuleHints();
+    if (!hints) return;
+    const plan = PlanSchema.parse({
+      bpm: 100,
+      chords: [[0, "C"]],
+      sections: [
+        { name: "A", bars: 4, energy: 1, role: "intro" },
+        { name: "B", bars: 4, energy: 2, role: "verse" },
+        { name: "C", bars: 4, energy: 3, role: "chorus" },
+      ],
+    });
+    const out = applyCorpusHints(plan);
+    expect(out.sections[0]!.drums).toBe(hints.drumPatternsByEnergy[1][0]);
+    expect(out.sections[1]!.drums).toBe(hints.drumPatternsByEnergy[2][1]);
+    expect(out.sections[2]!.drums).toBe(hints.drumPatternsByEnergy[3][0]);
   });
 
   it("applies hints only to fields left at schema defaults", () => {

@@ -24,6 +24,8 @@ export type CorpusFitParts = {
   instruments: number;
   rhythm: number;
   drums: number;
+  /** ドラムの1小節あたりヒット数 (密度) の近さ */
+  drumDensity: number;
   harmonicRhythm: number;
   chordQualities: number;
   borrowed: number;
@@ -139,6 +141,19 @@ function drumFit(score: Score, p: CorpusProfile): number {
   return na === 0 || nb === 0 ? 0 : clamp01(dot / Math.sqrt(na * nb));
 }
 
+/** ドラムの1小節あたりヒット数 (密度) の近さ。構成比だけでは「詰まり具合」を測れないため */
+function drumDensityFit(score: Score, plan: Plan, p: CorpusProfile): number {
+  const bars = Math.max(1, Math.ceil(Math.max(0, ...score.tracks.flatMap((t) => t.notes.map((n) => n.start + n.duration))) / beatsPerBarOf(plan)));
+  let hits = 0;
+  for (const t of score.tracks) if (t.channel === 9) hits += t.notes.length;
+  const actual = hits / bars;
+  const target = p.rhythm.drumHitsPerBar;
+  if (target <= 0) return 1;
+  return toleranceFit(actual, target, target * 0.3, target * 0.8);
+}
+
+const beatsPerBarOf = (plan: Plan): number => (plan.timeSignature[0] * 4) / plan.timeSignature[1];
+
 /** 生成プランの和声をコーパスと比較 (和声リズム・品質・借用率) */
 function harmonyFits(plan: Plan, p: CorpusProfile, mode: "simple" | "standard" | "rich") {
   const notes: string[] = [];
@@ -214,13 +229,14 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
     instruments: instrumentFit(score, profile),
     rhythm: rhythmFit(score, plan, profile),
     drums: drumFit(score, profile),
+    drumDensity: drumDensityFit(score, plan, profile),
     harmonicRhythm: harmony.harmonicRhythm,
     chordQualities: harmony.chordQualities,
     borrowed: harmony.borrowed,
     form: harmony.form,
   };
   const weights: Record<keyof CorpusFitParts, number> = {
-    tempo: tempoIsInformative ? 12 : 0, mode: 8, meter: 6, instruments: 12, rhythm: 14, drums: 10,
+    tempo: tempoIsInformative ? 12 : 0, mode: 8, meter: 6, instruments: 12, rhythm: 12, drums: 8, drumDensity: 6,
     harmonicRhythm: 12, chordQualities: 10, borrowed: 6, form: 8,
     ...opts.weights,
   };
@@ -236,5 +252,6 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
   }
   if (parts.instruments < 0.5) notes.push("instrument mix differs from the corpus (check program choices)");
   if (parts.drums < 0.5) notes.push("drum emphasis differs from the corpus (check which drum sounds dominate)");
+  if (parts.drumDensity < 0.5) notes.push(`drum density differs from the corpus (about ${profile.rhythm.drumHitsPerBar} hits/bar)`);
   return { total: round((sum / Math.max(1, wsum)) * 100, 1), parts, notes };
 }

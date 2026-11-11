@@ -175,6 +175,13 @@ export function drumPatternPitchShares(): Record<string, Record<string, number>>
   return out;
 }
 
+/** 各ドラムパターンの1小節あたりヒット数。セクション密度の比較用 */
+export function drumPatternHitsPerBar(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [name, hits] of Object.entries(BAR_PATTERNS)) out[name] = hits.length;
+  return out;
+}
+
 /** パターンの分類別ヒット数 (人間向けの要約) */
 export type DrumPatternMix = { kick: number; snare: number; hat: number; cymbal: number; tom: number };
 const CATEGORY: Record<string, keyof DrumPatternMix> = {
