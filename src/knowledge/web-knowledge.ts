@@ -71,6 +71,12 @@ const CORE_CATEGORIES = new Set(["harmony", "arrangement", "rhythm", "form"]);
 
 /** 短い曲・シンプル構成では出さない助言 (転調・ブリッジ・プリコーラス・32小節形式など) */
 const LONG_FORM_RE = /modulat|key change|pivot|転調|bridge|pre-chorus|プリコーラス|32-bar|32小節/i;
+/**
+ * 参照コーパス（詞のないゲーム音楽編曲）と衝突しやすい助言。
+ * コーパス整合フィルタとして常時適用する。
+ */
+const CORPUS_CONFLICT_RE =
+  /lyric|vocal|singer|歌詞|歌もの|sing(?:er|ing)?\b|avoid repetition|vary every bar|unpredictable|surprise the listener|tempo of|bpm range|\b\d{2,3}\s*bpm\b/i;
 
 export type WebKnowledgeContext = {
   bars?: number;
@@ -82,7 +88,10 @@ export type WebKnowledgeContext = {
 
 /** カードがこの生成の文脈に合うか (無関係な助言でプロンプトを汚さない) */
 export function cardFitsContext(card: WebKnowledgeCard, ctx: WebKnowledgeContext = {}): boolean {
-  const text = `${card.title} ${card.keywords.join(" ")} ${card.advice.join(" ")}`;
+  const title = card.title;
+  const text = `${card.title} ${card.advice.join(" ")}`;
+  // コーパス整合: 歌詞・ボーカル、反復回避、テンポ指定などの助言は参照コーパスと衝突する
+  if (CORPUS_CONFLICT_RE.test(`${title} ${text}`)) return false;
   if (ctx.bars !== undefined && ctx.bars < 16 && LONG_FORM_RE.test(text)) return false;
   if (ctx.complexity === "simple" && /counterpoint|対位法|inversion|転回/i.test(text)) return false;
   if (ctx.ensemble !== "orchestra" && /orchestra|orchestrat|オーケストラ/i.test(text)) return false;

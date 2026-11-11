@@ -206,8 +206,10 @@ export type PlanPromptOptions = {
   complexity?: Complexity;
   /** false にするとコーパス由来の知見を注入しない (A/B 計測用。既定は注入する) */
   corpus?: boolean;
-  /** false にするとWeb由来の知識カードを注入しない (A/B 計測用。既定は注入する) */
+  /** true にするとWeb由来の知識カードを注入する (既定 false。A/B 計測用) */
   web?: boolean;
+  /** Web知識のフォールバック注入 (キーワード一致なしでも1枚入れる) を許すか。既定 true */
+  webFallback?: boolean;
 };
 
 function complexityBlock(
@@ -271,9 +273,10 @@ The arrangement will be ORCHESTRAL (strings, woodwinds, brass, timpani, harp). F
         progressionBlock(progc) +
         (mode !== undefined ? variationBlock(opts.seed!, progc, cards, userPrompt, mode) : "") +
         (opts.corpus === false ? "" : corpusGuidance()) +
-        (opts.web === false
+        (opts.web !== true
           ? ""
           : webKnowledgeGuidance(userPrompt, undefined, 2, {
+              fallback: opts.webFallback !== false,
               context: { bars, complexity: opts.complexity, ensemble },
             })) +
         complexityBlock(bars, opts.complexity) +

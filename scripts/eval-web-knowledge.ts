@@ -22,6 +22,9 @@ import type { ComposeResult } from "../src/compose";
 const argOf = (name: string) => process.argv.find((a: string) => a.startsWith(`--${name}=`))?.split("=")[1];
 
 const bars = Number(argOf("bars") ?? 8);
+const webFallback = !process.argv.includes("--no-web-fallback");
+/** ルール層補正も含めるか (既定はプロンプト注入のみ。--web-rules で有効化) */
+const webRules = process.argv.includes("--web-rules");
 const prompts = (argOf("prompts") ?? "疾走感のあるアーケードゲームのBGM|ゲームのボス戦BGM|静かなローファイ|明るいEDM")
   .split("|")
   .map((s: string) => s.trim())
@@ -54,6 +57,22 @@ const median = (xs: number[]) => {
   return s.length % 2 === 0 ? (s[mid - 1]! + s[mid]!) / 2 : s[mid]!;
 };
 const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
+
+/** プロバイダのハングで評価全体が止まらないよう、1曲に上限を設ける */
+const COMPOSE_TIMEOUT_MS = Number(argOf("timeout-ms") ?? 180_000);
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label}: timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function measure(result: ComposeResult, prompt: string, seed: number, web: boolean): Row {
   const expectedMode = pickMode(prompt, seed + 0); // compose 内の seed 解決と同じ (明示seed)
@@ -91,12 +110,18 @@ async function main() {
       for (const web of [false, true]) {
         const t0 = Date.now();
         try {
-          const result = await compose(cfg, prompt, bars, {
-            seed,
-            creativity: 0.5,
-            complexity: "standard",
-            webKnowledge: web,
-          });
+          const result = await withTimeout(
+            compose(cfg, prompt, bars, {
+              seed,
+              creativity: 0.5,
+              complexity: "standard",
+              webKnowledge: web,
+              webFallback,
+              webRules,
+            }),
+            COMPOSE_TIMEOUT_MS,
+            `${prompt} seed=${seed} web=${web}`,
+          );
           const row = measure(result, prompt, seed, web);
           rows.push(row);
           console.log(
@@ -150,7 +175,7 @@ async function main() {
     "# Web知識カード A/B 評価",
     "",
     `生成: ${new Date().toISOString()}`,
-    `条件: bars=${bars} / prompts=${prompts.length} / seeds=${seeds.join(",")} / 知識カード ${webKnowledgeCards.length} 枚`,
+    `条件: bars=${bars} / prompts=${prompts.length} / seeds=${seeds.join(",")} / webFallback=${webFallback} / 知識カード ${webKnowledgeCards.length} 枚`,
     "",
     "| 指標 | OFF | ON | 差 |",
     "|---|---|---|---|",

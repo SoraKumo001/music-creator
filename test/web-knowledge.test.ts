@@ -86,14 +86,16 @@ describe("webKnowledgeGuidance", () => {
     expect(webKnowledgeGuidance("全く無関係な文章", [niche])).toBe("");
   });
 
-  it("can be disabled with the web:false prompt option", () => {
-    const off = planMessages("和声 melody groove", 8, false, "band", { web: false })[0]!.content;
+  it("is opt-in in planMessages (compose/API default off) and can request fallback", () => {
+    const off = planMessages("和声 melody groove", 8, false, "band")[0]!.content;
     expect(off).not.toContain("Composition craft notes");
-    // カードが生成済みでマッチする場合のみ、既定で注入されることも確認
+    // web:true で注入される (カードが生成済みなら)
     if (webKnowledgeGuidance("和声 melody groove") !== "") {
-      const on = planMessages("和声 melody groove", 8, false, "band")[0]!.content;
+      const on = planMessages("和声 melody groove", 8, false, "band", { web: true })[0]!.content;
       expect(on).toContain("Composition craft notes");
     }
+    // webFallback:false はキーワード一致のみ
+    expect(typeof planMessages("全く無関係な文章", 8, false, "band", { web: true, webFallback: false })[0]!.content).toBe("string");
   });
 
   it("exposes whether generated cards exist", () => {
@@ -248,6 +250,14 @@ describe("cardFitsContext", () => {
     const dense = card({ title: "Dense ostinato", advice: ["Drive with a dense ostinato."] });
     expect(cardFitsContext(dense, { calm: true })).toBe(false);
     expect(cardFitsContext(dense, { calm: false })).toBe(true);
+  });
+
+  it("filters advice that conflicts with the instrumental corpus (lyrics, tempo, anti-repetition)", () => {
+    expect(cardFitsContext(card({ title: "Lyrics", advice: ["Write lyrics that a singer can phrase well."] }))).toBe(false);
+    expect(cardFitsContext(card({ title: "Tempo", advice: ["Set the tempo to 128 BPM for energy."] }))).toBe(false);
+    expect(cardFitsContext(card({ title: "Variety", advice: ["Avoid repetition to surprise the listener."] }))).toBe(false);
+    // 無害な助言は残る
+    expect(cardFitsContext(card({ title: "Tonic", advice: ["State the tonic early."] }))).toBe(true);
   });
 
   it("is applied by selectWebKnowledge when a context is given", () => {

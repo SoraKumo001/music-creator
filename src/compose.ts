@@ -310,14 +310,16 @@ export type ComposeOptions = {
   /** コーパス統計をルール層へ適用するか (既定 true) */
   corpusRules?: boolean;
   /**
-   * Web由来の知識カードを使うか (既定 false = opt-in)。
-   * A/B実測でコーパス適合度が下がったため、既定では生成に使わない。
+   * Web由来の知識カード（プロンプト注入）を使うか。既定 false = opt-in。
+   * コーパス整合フィルタ後にA/Bでプラス方向になったため、ユーザーが有効化できる。
    */
   webKnowledge?: boolean;
-  /** Web知識のプロンプト注入だけを個別に有効化する (A/B計測用) */
+  /** Web知識のプロンプト注入だけを個別に無効化する (A/B計測用) */
   webPrompt?: boolean;
-  /** Web知識のルール層補正だけを個別に有効化する (A/B計測用) */
+  /** Web知識のルール層補正 (スタイルタグ→既定値) を使うか。既定 false = opt-in */
   webRules?: boolean;
+  /** キーワード一致が無い場合のフォールバック注入を許すか (既定 true。A/B計測用) */
+  webFallback?: boolean;
 };
 
 const TEMPS = [0.7, 0.9, 1.1, 0.8, 1.3];
@@ -376,9 +378,10 @@ export async function compose(
   const rng = mulberry32(seed);
   // コーパス知見をプロンプトへ入れるか (モードの事前分布にも使う)
   const useCorpusPrompt = opts.corpus !== false && opts.corpusPrompt !== false;
-  // Web知識カード: 既定はOFF (opt-in)。プロンプト注入とルール層補正を個別に有効化できる
+  // Web知識カード: 既定はOFF (opt-in)。プロンプト注入とルール層補正は独立に有効化できる
+  // (A/B実測でルール層補正はコーパス適合度を下げたため、ルール層は明示 opt-in のみ)
   const useWebPrompt = opts.webKnowledge === true && opts.webPrompt !== false;
-  const useWebRules = opts.webKnowledge === true && opts.webRules !== false;
+  const useWebRules = opts.webKnowledge === true && opts.webRules === true;
   // この生成で使うモード (長調/短調)。プロンプトにも明示し、LLM が無視したら作り直させる
   const targetMode = pickMode(prompt, seed, { corpusPrior: useCorpusPrompt });
   cfg = { ...cfg, sessionId: cfg.sessionId ?? "mc-" + crypto.randomUUID() };
@@ -395,6 +398,7 @@ export async function compose(
     complexity,
     corpus: useCorpusPrompt,
     web: useWebPrompt,
+    webFallback: opts.webFallback,
   });
   let plan: Plan | undefined;
   /**
