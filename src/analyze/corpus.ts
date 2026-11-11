@@ -33,9 +33,9 @@ export type CorpusProfile = {
    */
   drumByEnergy: {
     densityTertiles: [number, number];
-    low: { sections: number; shares: Record<string, number>; medianHitsPerBar: number };
-    mid: { sections: number; shares: Record<string, number>; medianHitsPerBar: number };
-    high: { sections: number; shares: Record<string, number>; medianHitsPerBar: number };
+    low: { sections: number; shares: Record<string, number>; medianHitsPerBar: number; medianDensity: number };
+    mid: { sections: number; shares: Record<string, number>; medianHitsPerBar: number; medianDensity: number };
+    high: { sections: number; shares: Record<string, number>; medianHitsPerBar: number; medianDensity: number };
   };
   rhythm: {
     /** 小節内16ステップの平均オンセット分布 (合計1) */
@@ -215,6 +215,7 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
   );
   const energyBuckets = { low: new Map<string, number>(), mid: new Map<string, number>(), high: new Map<string, number>() };
   const bucketHitsPerBar = { low: [] as number[], mid: [] as number[], high: [] as number[] };
+  const bucketDensities = { low: [] as number[], mid: [] as number[], high: [] as number[] };
   const bucketSectionCounts = { low: 0, mid: 0, high: 0 };
   let densityTertiles: [number, number] = [0, 0];
   if (sectionsWithDrums.length > 0) {
@@ -226,6 +227,7 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
       const bucket = section.density <= q1 ? "low" : section.density > q2 ? "high" : "mid";
       bucketSectionCounts[bucket]++;
       bucketHitsPerBar[bucket].push(section.drumTotal / Math.max(1, section.bars));
+      bucketDensities[bucket].push(section.density);
       for (const [pitch, shareValue] of Object.entries(section.drumShares)) {
         const hits = shareValue * section.drumTotal;
         energyBuckets[bucket].set(pitch, (energyBuckets[bucket].get(pitch) ?? 0) + hits);
@@ -341,16 +343,19 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
         sections: bucketSectionCounts.low,
         shares: sharesOf(energyBuckets.low),
         medianHitsPerBar: round(median(bucketHitsPerBar.low), 1),
+        medianDensity: round(median(bucketDensities.low), 1),
       },
       mid: {
         sections: bucketSectionCounts.mid,
         shares: sharesOf(energyBuckets.mid),
         medianHitsPerBar: round(median(bucketHitsPerBar.mid), 1),
+        medianDensity: round(median(bucketDensities.mid), 1),
       },
       high: {
         sections: bucketSectionCounts.high,
         shares: sharesOf(energyBuckets.high),
         medianHitsPerBar: round(median(bucketHitsPerBar.high), 1),
+        medianDensity: round(median(bucketDensities.high), 1),
       },
     },
     rhythm: {
@@ -447,8 +452,13 @@ export function buildInsights(p: CorpusProfile): string[] {
     })
     .filter((s) => s !== "");
   if (energyDrums.length > 0) {
-    out.push(`Drum emphasis by section density (${p.drumByEnergy.densityTertiles[0]}-${p.drumByEnergy.densityTertiles[1]} onsets/bar): ${energyDrums.join("; ")}.`);
+    out.push(
+      `Drum emphasis by section density (${p.drumByEnergy.densityTertiles[0]}-${p.drumByEnergy.densityTertiles[1]} onsets/bar): ${energyDrums.join("; ")}.`,
+    );
   }
+  out.push(
+    `Section density targets (onsets/bar): low ${p.drumByEnergy.low.medianDensity}, mid ${p.drumByEnergy.mid.medianDensity}, high ${p.drumByEnergy.high.medianDensity}.`,
+  );
 
   out.push(
     `Rhythm: downbeat onsets ${pct(p.rhythm.downbeatShare)}, off-beat 8ths ${pct(p.rhythm.offbeat8thShare)}, ` +

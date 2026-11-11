@@ -16,7 +16,7 @@ import {
 } from "./plan";
 import { BASS_STYLES, COMP_STYLES } from "./theory/accompaniment";
 import { DRUM_PATTERN_NAMES } from "./theory/drums";
-import type { Mode } from "./theory/key";
+import { parseKeyName, type Mode } from "./theory/key";
 import { realizeNumerals } from "./theory/roman";
 import { hashSeed, mulberry32, sampleSeeded } from "./util/random";
 import { isCalmPrompt } from "./knowledge/corpus";
@@ -272,7 +272,7 @@ The arrangement will be ORCHESTRAL (strings, woodwinds, brass, timpani, harp). F
         knowledge +
         progressionBlock(progc) +
         (mode !== undefined ? variationBlock(opts.seed!, progc, cards, userPrompt, mode) : "") +
-        (opts.corpus === false ? "" : corpusGuidance()) +
+        (opts.corpus === false ? "" : corpusGuidance(mode)) +
         (opts.web !== true
           ? ""
           : webKnowledgeGuidance(userPrompt, undefined, 2, {
@@ -315,6 +315,8 @@ export type MelodyPromptOptions = {
   counterTo?: { pitch: number; start: number; duration: number }[];
   /** false ならコーパス由来の旋律の傾向を注入しない (corpus:false のA/B用) */
   corpus?: boolean;
+  /** false なら旋律のコーパス prior だけを切る (A/B用。既定 true) */
+  melodyPrior?: boolean;
 };
 
 export function melodyMessages(
@@ -401,7 +403,7 @@ export function melodyMessages(
   return [
     {
       role: "system",
-      content: MELODY_SYSTEM + "\n" + endingRule + ensembleRule + (opts.corpus === false ? "" : corpusMelodyGuidance()),
+      content: MELODY_SYSTEM + "\n" + endingRule + ensembleRule + (opts.corpus === false || opts.melodyPrior === false ? "" : corpusMelodyGuidance(parseKeyName(plan.key).mode)),
     },
     { role: "user", content: user },
   ];

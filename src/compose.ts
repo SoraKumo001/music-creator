@@ -321,6 +321,8 @@ export type ComposeOptions = {
   webRules?: boolean;
   /** キーワード一致が無い場合のフォールバック注入を許すか (既定 true。A/B計測用) */
   webFallback?: boolean;
+  /** 旋律プロンプトへのコーパス旋律priorの注入 (既定 true。A/B計測用) */
+  melodyPrior?: boolean;
 };
 
 const TEMPS = [0.7, 0.9, 1.1, 0.8, 1.3];
@@ -665,6 +667,7 @@ export async function compose(
           .map((n) => ({ pitch: n.pitch, start: n.start })),
         themeHints,
         corpus: useCorpusPrompt,
+        melodyPrior: opts.melodyPrior,
       },
     );
     let cands: { notes: Note[]; score: MelodyScore }[] = [];

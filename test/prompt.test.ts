@@ -181,5 +181,9 @@ describe("melody prompt", () => {
     expect(melodyMessages("x", plan, sections, 2, 4, { corpus: false })[0]!.content).not.toContain(
       "Reference-corpus melody prior",
     );
+    // 旋律priorだけを個別に切れる (A/B用)
+    expect(melodyMessages("x", plan, sections, 2, 4, { melodyPrior: false })[0]!.content).not.toContain(
+      "Reference-corpus melody prior",
+    );
   });
 });

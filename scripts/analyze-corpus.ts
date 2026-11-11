@@ -21,6 +21,7 @@ import { extractFeatures, type MidiFeatures } from "../src/analyze/features";
 import { aggregateDrumPatterns, extractDrumBarPatterns } from "../src/analyze/patterns";
 import { extractMidiLinks, safeLocalName } from "../src/analyze/links";
 import { parseMidi } from "../src/midi/parseMidi";
+import { parseKeyName } from "../src/theory/key";
 
 type Args = {
   url?: string;
@@ -36,6 +37,8 @@ type Args = {
   outDrumPatterns: string;
   minPatternBars: number;
   userAgent: string;
+  /** 長調/短調のサブプロファイルも生成する */
+  splitMode: boolean;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -61,6 +64,7 @@ function parseArgs(argv: string[]): Args {
     outDrumPatterns: get("drum-patterns") ?? "src/knowledge/drum-patterns.generated.ts",
     minPatternBars: Number(get("min-pattern-bars") ?? 8),
     userAgent: get("user-agent") ?? "music-creator-corpus/0.1 (analysis only; no redistribution)",
+    splitMode: has("split-mode"),
   };
 }
 
@@ -125,7 +129,10 @@ function reportOf(profile: CorpusProfile): string {
   ].join("\n");
 }
 
-function generatedModule(profile: CorpusProfile): string {
+function generatedModule(
+  profile: CorpusProfile,
+  byMode: { major: CorpusProfile; minor: CorpusProfile } | null = null,
+): string {
   return [
     "// AUTO-GENERATED FILE — do not edit by hand.",
     "// 生成: npm run analyze:corpus",
@@ -133,6 +140,10 @@ function generatedModule(profile: CorpusProfile): string {
     'import type { CorpusProfile } from "../analyze/corpus";',
     "",
     `export const CORPUS_PROFILE: CorpusProfile | null = ${JSON.stringify(profile, null, 2)};`,
+    "",
+    `export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfile } | null = ${
+      byMode ? JSON.stringify(byMode, null, 2) : "null"
+    };`,
     "",
   ].join("\n");
 }
@@ -211,6 +222,20 @@ async function main() {
 
   // ---- 3. 集計 ----
   const profile = aggregateFeatures(features, { label: args.label });
+  // 長調/短調のサブプロファイル (楽器構成・リズム・ドラムは調性で偏るため)
+  let byMode: { major: CorpusProfile; minor: CorpusProfile } | null = null;
+  if (args.splitMode) {
+    const major = features.filter((f) => parseKeyName(f.key).mode === "major");
+    const minor = features.filter((f) => parseKeyName(f.key).mode === "minor");
+    if (major.length >= 4 && minor.length >= 4) {
+      byMode = {
+        major: aggregateFeatures(major, { label: `${args.label}-major` }),
+        minor: aggregateFeatures(minor, { label: `${args.label}-minor` }),
+      };
+    } else {
+      console.warn(`--split-mode: 件数不足のためサブプロファイルは生成しません (major ${major.length} / minor ${minor.length})`);
+    }
+  }
   // ドラムパターンの抽出 (頻出する1小節を最大8個)
   const drumCandidates = aggregateDrumPatterns(drumBars, 8, args.minPatternBars);
   const drumPatterns = drumCandidates.map((p, i) => ({ name: `corpus${i + 1}`, steps: p.steps }));
@@ -223,7 +248,11 @@ async function main() {
   writeFileSync(args.outJson, JSON.stringify(profile, null, 2));
   writeFileSync(args.outReport, reportOf(profile));
   mkdirSync(join(args.outGenerated, ".."), { recursive: true });
-  writeFileSync(args.outGenerated, generatedModule(profile));
+  writeFileSync(args.outGenerated, generatedModule(profile, byMode));
+  if (byMode) {
+    writeFileSync("out/corpus-profile-major.json", JSON.stringify(byMode.major, null, 2));
+    writeFileSync("out/corpus-profile-minor.json", JSON.stringify(byMode.minor, null, 2));
+  }
   const drumOut = args.outDrumPatterns;
   writeFileSync(drumOut, drumPatternsModule(drumPatterns));
 

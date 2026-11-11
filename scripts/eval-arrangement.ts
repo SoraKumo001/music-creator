@@ -49,12 +49,15 @@ function melodyFor(plan: ReturnType<typeof PlanSchema.parse>, bars: number): Not
 if (!corpusProfile) throw new Error("corpus profile is missing");
 const corpusSus = Math.max(0.05, Math.min(0.5, corpusProfile.harmony.susShare));
 
-type Variant = { name: string; susProbability: number; useStyleFit: boolean; useDrumDensityFit: boolean };
+type Variant = { name: string; susProbability: number; useStyleFit: boolean; useDrumDensityFit: boolean; roleAware: boolean; modeProfiles: boolean };
 const VARIANTS: Variant[] = [
-  { name: "styleFit+corpusSus", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true },
-  { name: "styleFit+legacySus", susProbability: 0.35, useStyleFit: true, useDrumDensityFit: true },
-  { name: "noStyleFit", susProbability: corpusSus, useStyleFit: false, useDrumDensityFit: true },
-  { name: "noDrumDensity", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: false },
+  // 既定 (コーパス忠実度優先): role-aware は opt-in
+  { name: "corpusDefault", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: true },
+  { name: "noModeProfiles", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: false },
+  { name: "roleAware", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: true, modeProfiles: true },
+  { name: "noDrumDensity", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: false, roleAware: false, modeProfiles: true },
+  { name: "legacySus", susProbability: 0.35, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: true },
+  { name: "noStyleFit", susProbability: corpusSus, useStyleFit: false, useDrumDensityFit: true, roleAware: false, modeProfiles: true },
 ];
 
 type Row = {
@@ -97,6 +100,8 @@ for (const file of files) {
         dense: true,
         useStyleFit: variant.useStyleFit,
         useDrumDensityFit: variant.useDrumDensityFit,
+        roleAware: variant.roleAware,
+        modeProfiles: variant.modeProfiles,
       });
       const beatsPerBar = (hinted.timeSignature[0] * 4) / hinted.timeSignature[1];
       const sections = resolveSections(hinted, bars, beatsPerBar);
@@ -117,7 +122,7 @@ for (const file of files) {
   }
 }
 
-const parts = ["tempo", "mode", "meter", "instruments", "rhythm", "drums", "drumDensity", "harmonicRhythm", "chordQualities", "borrowed", "form"] as const;
+const parts = ["tempo", "mode", "meter", "instruments", "rhythm", "drums", "drumDensity", "sectionDensity", "harmonicRhythm", "chordQualities", "borrowed", "form"] as const;
 const summarize = (variant: string) => {
   const rs = rows.filter((r) => r.variant === variant);
   return {

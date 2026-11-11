@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { aggregateFeatures, drumName, type CorpusProfile } from "../src/analyze/corpus";
 import { evaluateCorpusFit } from "../src/eval/corpusFit";
 import type { MidiFeatures } from "../src/analyze/features";
-import { applyCorpusHints, corpusProfile, corpusRuleHints } from "../src/knowledge/corpus";
+import { applyCorpusHints, corpusProfile, corpusProfileForMode, corpusRuleHints } from "../src/knowledge/corpus";
 import { PlanSchema, resolveSections } from "../src/plan";
 import { planMessages } from "../src/prompt";
 import { assemble } from "../src/compose";
@@ -214,7 +214,7 @@ describe("generated profile", () => {
   });
 
   it("picks drum patterns per section energy from the profile", () => {
-    const hints = corpusRuleHints();
+    const hints = corpusRuleHints({ mode: "major" });
     if (!hints) return;
     const plan = PlanSchema.parse({
       bpm: 100,
@@ -229,6 +229,31 @@ describe("generated profile", () => {
     expect(out.sections[0]!.drums).toBe(hints.drumPatternsByEnergy[1][0]);
     expect(out.sections[1]!.drums).toBe(hints.drumPatternsByEnergy[2][1]);
     expect(out.sections[2]!.drums).toBe(hints.drumPatternsByEnergy[3][0]);
+  });
+
+  it("provides major/minor sub-profiles and keeps role-aware mode opt-in", () => {
+    if (corpusProfile === null) return;
+    const major = corpusProfileForMode("major");
+    expect(major).not.toBeNull();
+    // サブプロファイルが無ければ全体プロファイルへフォールバック
+    if (major !== corpusProfile) {
+      expect(major!.source.analyzed).toBeGreaterThan(0);
+      expect(major!.modeShare.major).toBeGreaterThan(0.9);
+    }
+    expect(corpusRuleHints({ mode: "major" })).not.toBeNull();
+    // roleAware は opt-in: 既定では intro でもコーパスの comp を使う
+    const plan = PlanSchema.parse({
+      bpm: 100,
+      chords: [[0, "C"]],
+      sections: [
+        { name: "I", bars: 4, energy: 1, role: "intro" },
+        { name: "C", bars: 4, energy: 3, role: "chorus" },
+      ],
+    });
+    const hints = corpusRuleHints({ mode: "major" });
+    if (!hints) return;
+    expect(applyCorpusHints(plan).sections[0]!.comp).toBe(hints.compStyles[0]);
+    expect(applyCorpusHints(plan, { roleAware: true }).sections[0]!.comp).toBe("pad");
   });
 
   it("applies hints only to fields left at schema defaults", () => {

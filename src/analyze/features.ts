@@ -134,7 +134,14 @@ const median = (xs: number[]): number => {
  * この種のMIDIは division / テンポの宣言と実際の拍節が一致しないことがあるため、
  * オンセットの自己相関で「周期的に強く繰り返す長さ」を探し、宣言値の近傍で最も強いものを採る。
  */
-export function inferBarTicks(ticks: number[], division: number, declaredBeatsPerBar: number): { barTicks: number; confidence: number; source: "declared" | "inferred" } {
+export function inferBarTicks(
+  ticks: number[],
+  division: number,
+  declaredBeatsPerBar: number,
+  opts: { minImprovement?: number } = {},
+): { barTicks: number; confidence: number; source: "declared" | "inferred" } {
+  /** 推定値を採用するのに必要な自己相関の改善率 (大きいほど宣言値を優先) */
+  const minImprovement = opts.minImprovement ?? 0.08;
   const declared = Math.max(8, declaredBeatsPerBar * division);
   if (ticks.length < 16) return { barTicks: declared, confidence: 0, source: "declared" };
   const start = Math.min(...ticks);
@@ -170,7 +177,7 @@ export function inferBarTicks(ticks: number[], division: number, declaredBeatsPe
   const declaredScore = ac[Math.max(8, Math.round(declared))]!;
   const improvement = best.score - 1;
   // 明確な改善があるときだけ推定値を使う
-  if (best.lag !== Math.round(declared) && improvement > 0.08) {
+  if (best.lag !== Math.round(declared) && improvement > minImprovement) {
     return { barTicks: best.lag, confidence: round(Math.min(1, improvement), 3), source: "inferred" };
   }
   void declaredScore;
@@ -452,6 +459,8 @@ export type FeatureOptions = {
    * 未指定なら最高声部 (全チャンネル) を旋律とみなす (コーパスはパート情報が無いため)。
    */
   melodyChannel?: number;
+  /** 拍節推定で宣言値を優先する強さ (0-1)。大きいほど宣言値を採用しやすい */
+  barInferenceThreshold?: number;
 };
 
 export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOptions = {}): MidiFeatures {
@@ -476,7 +485,9 @@ export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOpt
   );
 
   // 拍節は実測から推定する (宣言 division と食い違うMIDIへの対策)
-  const barInference = inferBarTicks(notes.map((n) => n.tick), division, beatsPerBar);
+  const barInference = inferBarTicks(notes.map((n) => n.tick), division, beatsPerBar, {
+    minImprovement: opts.barInferenceThreshold,
+  });
   const barTicks = barInference.barTicks;
   const beatTicks = barTicks / beatsPerBar;
   const bars = Math.max(1, Math.ceil((musicEndTick - startTick) / barTicks));

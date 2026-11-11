@@ -4,14 +4,23 @@
  * 未生成 (null) の場合は何も注入しない = 従来の挙動。
  */
 
-import { CORPUS_PROFILE } from "./corpus-profile.generated";
+import { CORPUS_PROFILE, CORPUS_PROFILES_BY_MODE } from "./corpus-profile.generated";
 import type { CorpusProfile } from "../analyze/corpus";
 import type { Plan } from "../plan";
 import { COMP_STYLES, BASS_STYLES } from "../theory/accompaniment";
 import { drumPatternHitsPerBar, drumPatternPitchShares, DRUM_PATTERN_NAMES } from "../theory/drums";
+import { parseKeyName } from "../theory/key";
 import { corpusStyleFit, normalizedStyleScores } from "./styleMatch";
 
 export const corpusProfile: CorpusProfile | null = CORPUS_PROFILE;
+
+/**
+ * 長調/短調のサブプロファイル (analyze:corpus --split-mode で生成)。
+ * 未生成なら全体プロファイルへフォールバックする。
+ */
+export function corpusProfileForMode(mode: "major" | "minor"): CorpusProfile | null {
+  return CORPUS_PROFILES_BY_MODE?.[mode] ?? CORPUS_PROFILE;
+}
 
 export function hasCorpusProfile(): boolean {
   return corpusProfile !== null;
@@ -62,7 +71,7 @@ function corpusDrumShares(p: CorpusProfile): Record<string, number> {
 }
 
 export function corpusRuleHints(opts: CorpusHintOptions = {}): CorpusRuleHints | null {
-  const p = corpusProfile;
+  const p = opts.modeProfiles === false ? corpusProfile : opts.mode ? corpusProfileForMode(opts.mode) : corpusProfile;
   if (!p) return null;
 
   // --- ドラム: コーパスの GM 音別の出現比に最も近いパターンを上位に ---
@@ -158,8 +167,8 @@ export function corpusRuleHints(opts: CorpusHintOptions = {}): CorpusRuleHints |
  * プロンプトへ差し込む「観測された傾向」ブロック。
  * 生成側の自由度を保つため、数値は目安として提示し、強い制約にはしない。
  */
-export function corpusGuidance(): string {
-  const p = corpusProfile;
+export function corpusGuidance(mode?: "major" | "minor"): string {
+  const p = mode ? corpusProfileForMode(mode) : corpusProfile;
   if (!p) return "";
   const lines: string[] = [];
   lines.push("");
@@ -227,11 +236,19 @@ export type CorpusHintOptions = {
   useStyleFit?: boolean;
   /** false なら energy 別ドラムの密度制約を使わない (A/B/回帰用) */
   useDrumDensityFit?: boolean;
+  /** false ならセクション役割 (intro/outro/break/chorus) を考慮しない (A/B/回帰用) */
+  roleAware?: boolean;
+  /** 長調/短調のサブプロファイルを選ぶ (未指定なら全体プロファイル) */
+  mode?: "major" | "minor";
+  /** false なら長調/短調のサブプロファイルを使わない (A/B/回帰用) */
+  modeProfiles?: boolean;
 };
 
+/** 既定: コーパス忠実度を優先し、役割によるスパース化は opt-in (roleAware:true) */
+
 /** 旋律生成プロンプト用: コーパスの旋律の鳴り方を短く渡す (統計のみ) */
-export function corpusMelodyGuidance(): string {
-  const p = corpusProfile;
+export function corpusMelodyGuidance(mode?: "major" | "minor"): string {
+  const p = mode ? corpusProfileForMode(mode) : corpusProfile;
   if (!p) return "";
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   return (
@@ -283,7 +300,8 @@ function melodyFamilyOrder(prompt?: string): string[] {
  * 決定論的なので、A/B の効果測定にも使える。
  */
 export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan {
-  const hints = corpusRuleHints(opts);
+  const mode = opts.mode ?? parseKeyName(plan.key).mode;
+  const hints = corpusRuleHints({ ...opts, mode });
   if (!hints) return plan;
 
   const next: Plan = {
@@ -307,6 +325,7 @@ export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan
         : hints.drumPatternsByEnergy[2];
   const drumFor = (energy: number, role: string, idx: number): string => {
     const patterns = patternsFor(energy);
+    if (role === "break") return patterns[0] ?? "basic";
     if (energy <= 1 || role === "intro" || role === "outro") {
       // 静かなセクション: 低密度セクションのコーパス構成に最も近いパターン
       return patterns[0] ?? hints.drumPatterns[0] ?? "halftime";
@@ -323,6 +342,9 @@ export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan
   const isCalm = isCalmPrompt(opts.prompt);
   const isDriving = isDrivingPrompt(opts.prompt);
   const isRockLike = /ロック|rock|バンド|ギター|guitar|パンク|punk/i.test(opts.prompt ?? "");
+  const roleAware = opts.roleAware === true;
+  const isSparseRole = (s: { role: string; energy: number }) =>
+    s.role === "intro" || s.role === "outro" || s.role === "break" || s.energy <= 1;
 
   // 疾走系プロンプトなのに LLM が中速テンポ (120-145 BPM) を出した場合、疾走感が出る 160-176 BPM 帯へ引き上げる
   if (isDriving && next.bpm < 156) {
@@ -348,12 +370,25 @@ export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan
     const denseSection = opts.dense === true && !isCalm && s.energy >= 2;
     const drivingSection = isDriving && s.energy >= 2 && s.role !== "break" && s.role !== "outro";
 
-    let comp = s.comp === "pad" ? hints.compStyles[0] ?? s.comp : denseSection && sustainedComp ? "arpeggio16" : s.comp;
+    const sparseSection = roleAware && isSparseRole(s);
+    let comp = s.comp === "pad"
+      ? sparseSection
+        ? "pad" // 静かな導入/間奏/エンディングは持続系を保つ (コーパスの低密度セクション相当)
+        : hints.compStyles[0] ?? s.comp
+      : denseSection && sustainedComp
+        ? "arpeggio16"
+        : s.comp;
     if (drivingSection && slowCompForDriving) {
       comp = isRockLike && s.role !== "intro" ? "chug" : (s.role === "chorus" || s.energy >= 3 ? "arpeggio16" : "chug");
     }
 
-    let bass = s.bass === "root" ? hints.bassStyles[0] ?? s.bass : denseSection && sustainedBass ? "sixteenths" : s.bass;
+    let bass = s.bass === "root"
+      ? sparseSection
+        ? "root"
+        : hints.bassStyles[0] ?? s.bass
+      : denseSection && sustainedBass
+        ? "sixteenths"
+        : s.bass;
     if (drivingSection && slowBassForDriving) {
       bass = s.role === "chorus" || s.energy >= 3 ? "sixteenths" : "eighths";
     }
@@ -390,8 +425,7 @@ export function applyCorpusHints(plan: Plan, opts: CorpusHintOptions = {}): Plan
       energy: 2,
       role: "other",
       swell: 0,
-    }];
-  }
+    }];  }
   return next;
 }
 

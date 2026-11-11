@@ -26,6 +26,8 @@ export type CorpusFitParts = {
   drums: number;
   /** ドラムの1小節あたりヒット数 (密度) の近さ */
   drumDensity: number;
+  /** セクション energy ごとの音数密度 (オンセット/小節) の近さ */
+  sectionDensity: number;
   harmonicRhythm: number;
   chordQualities: number;
   borrowed: number;
@@ -154,6 +156,33 @@ function drumDensityFit(score: Score, plan: Plan, p: CorpusProfile): number {
 
 const beatsPerBarOf = (plan: Plan): number => (plan.timeSignature[0] * 4) / plan.timeSignature[1];
 
+/** セクション energy (1/2/3) ごとの音数密度がコーパスの実測帯に収まっているか */
+function sectionDensityFit(score: Score, plan: Plan, p: CorpusProfile): number {
+  if (plan.sections.length === 0) return 0.5;
+  const beatsPerBar = beatsPerBarOf(plan);
+  const nonDrum = score.tracks.filter((t) => t.channel !== 9).flatMap((t) => t.notes);
+  const targets: Record<number, number> = {
+    1: p.drumByEnergy.low.medianDensity,
+    2: p.drumByEnergy.mid.medianDensity,
+    3: p.drumByEnergy.high.medianDensity,
+  };
+  let sum = 0;
+  let count = 0;
+  let startBar = 0;
+  for (const section of plan.sections) {
+    const from = startBar * beatsPerBar;
+    const to = (startBar + section.bars) * beatsPerBar;
+    const onsets = nonDrum.filter((n) => n.start >= from && n.start < to).length;
+    const density = onsets / Math.max(1, section.bars);
+    const energy = Math.min(3, Math.max(1, Math.round(section.energy)));
+    const target = targets[energy] ?? 0;
+    sum += target > 0 ? toleranceFit(density, target, target * 0.35, target) : 1;
+    count++;
+    startBar += section.bars;
+  }
+  return count === 0 ? 0.5 : sum / count;
+}
+
 /** 生成プランの和声をコーパスと比較 (和声リズム・品質・借用率) */
 function harmonyFits(plan: Plan, p: CorpusProfile, mode: "simple" | "standard" | "rich") {
   const notes: string[] = [];
@@ -230,6 +259,7 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
     rhythm: rhythmFit(score, plan, profile),
     drums: drumFit(score, profile),
     drumDensity: drumDensityFit(score, plan, profile),
+    sectionDensity: sectionDensityFit(score, plan, profile),
     harmonicRhythm: harmony.harmonicRhythm,
     chordQualities: harmony.chordQualities,
     borrowed: harmony.borrowed,
@@ -237,7 +267,7 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
   };
   const weights: Record<keyof CorpusFitParts, number> = {
     tempo: tempoIsInformative ? 12 : 0, mode: 8, meter: 6, instruments: 12, rhythm: 12, drums: 8, drumDensity: 6,
-    harmonicRhythm: 12, chordQualities: 10, borrowed: 6, form: 8,
+    sectionDensity: 6, harmonicRhythm: 12, chordQualities: 10, borrowed: 6, form: 8,
     ...opts.weights,
   };
   let sum = 0;
@@ -253,5 +283,6 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
   if (parts.instruments < 0.5) notes.push("instrument mix differs from the corpus (check program choices)");
   if (parts.drums < 0.5) notes.push("drum emphasis differs from the corpus (check which drum sounds dominate)");
   if (parts.drumDensity < 0.5) notes.push(`drum density differs from the corpus (about ${profile.rhythm.drumHitsPerBar} hits/bar)`);
+  if (parts.sectionDensity < 0.5) notes.push("section note density differs from the corpus energy tiers");
   return { total: round((sum / Math.max(1, wsum)) * 100, 1), parts, notes };
 }
