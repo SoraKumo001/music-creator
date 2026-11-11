@@ -182,6 +182,38 @@ export function drumPatternHitsPerBar(): Record<string, number> {
   return out;
 }
 
+/** GM ドラム番号: トム系 (41,43,45,47,48,50) とスネア系 (38,40) */
+const TOM_PITCH_SET = new Set([41, 43, 45, 47, 48, 50]);
+const SNARE_PITCH_SET = new Set([38, 40]);
+
+/**
+ * 生成/解析済みのドラムノートからフィル統計を出す。
+ * トム2打以上またはスネア6打以上の小節を「フィル」とみなす (解析側と同じ基準)。
+ */
+export function drumFillStats(
+  notes: { pitch: number; start: number }[],
+  bars: number,
+  beatsPerBar = 4,
+): { barsWithDrums: number; fillBars: number; phraseEndBars: number; phraseEndFills: number } {
+  const out = { barsWithDrums: 0, fillBars: 0, phraseEndBars: 0, phraseEndFills: 0 };
+  for (let bar = 0; bar < bars; bar++) {
+    const from = bar * beatsPerBar;
+    const to = from + beatsPerBar;
+    const hits = notes.filter((n) => n.start >= from && n.start < to);
+    if (hits.length === 0) continue;
+    out.barsWithDrums++;
+    const isPhraseEnd = bar % 4 === 3;
+    if (isPhraseEnd) out.phraseEndBars++;
+    const toms = hits.filter((n) => TOM_PITCH_SET.has(n.pitch)).length;
+    const snares = hits.filter((n) => SNARE_PITCH_SET.has(n.pitch)).length;
+    if (toms >= 2 || snares >= 6) {
+      out.fillBars++;
+      if (isPhraseEnd) out.phraseEndFills++;
+    }
+  }
+  return out;
+}
+
 /** パターンの分類別ヒット数 (人間向けの要約) */
 export type DrumPatternMix = { kick: number; snare: number; hat: number; cymbal: number; tom: number };
 const CATEGORY: Record<string, keyof DrumPatternMix> = {
@@ -221,7 +253,7 @@ export function generateDrums(
   beatsPerBar = 4,
   ending: EndingStyle = "button",
   loop = false,
-  opts: { seed?: number } = {},
+  opts: { seed?: number; fillRate?: number } = {},
 ): Note[] {
   const notes: Note[] = [];
   const rand =
@@ -296,10 +328,16 @@ export function generateDrums(
       const isPreEnding = !loop && bar === totalBars - 2 && totalBars >= 3;
       // ループ用は最終小節の最後でフィルを打ち、次の周へ渡す
       const isLoopFill = loop && bar === totalBars - 1;
-      const isFill =
+      let isFill =
         (b === sec.bars - 1 && sec.bars >= 2 && si < sections.length - 1) ||
         isPreEnding ||
         isLoopFill;
+      // コーパス実測のフィル率に合わせてセクション末尾フィルを確率的に間引く
+      // (fillRate 指定時のみ。現行実装は各セクション末尾に必ずフィルを置く)
+      if (isFill && rand && opts.fillRate !== undefined) {
+        const gate = Math.max(0.1, Math.min(1, opts.fillRate / 0.2));
+        isFill = rand() < gate;
+      }
       // 4小節周期の中間ターンアラウンド (8小節セクションの4小節目など、セクション末尾以外の4小節区切り)
       const isMidTurnaround = Boolean(rand) && !isFill && beatsPerBar >= 4 && b % 4 === 3 && b < sec.bars - 1;
       // ビルドアップ区間: prechorus または swell > 0 の最終小節

@@ -115,6 +115,16 @@ export type MidiFeatures = {
   seventhShare: number;
   /** 楽器ファミリー別の出現数・密度・音域 */
   familyStats: Record<string, { notes: number; notesPerBar: number; medianPitch: number }>;
+  /**
+   * ドラムのフィル統計。トム/スネアが集中する小節をフィルとみなす。
+   * phraseEnd は 4小節区切りの最終小節。
+   */
+  drumFills: {
+    barsWithDrums: number;
+    fillBars: number;
+    phraseEndBars: number;
+    phraseEndFills: number;
+  };
 };
 
 const round = (x: number, digits = 3) => {
@@ -633,6 +643,27 @@ export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOpt
     };
   }
 
+  // ---- ドラムのフィル統計 (トム/スネアの集中する小節) ----
+  const TOM_PITCHES = new Set([41, 43, 45, 47, 48, 50]);
+  const SNARE_PITCHES = new Set([38, 40]);
+  const drumFills = { barsWithDrums: 0, fillBars: 0, phraseEndBars: 0, phraseEndFills: 0 };
+  for (let bar = 0; bar < bars; bar++) {
+    const from = startTick + bar * barTicks;
+    const to = from + barTicks;
+    const hits = drumNotes.filter((n) => n.tick >= from && n.tick < to);
+    if (hits.length === 0) continue;
+    drumFills.barsWithDrums++;
+    const isPhraseEnd = bar % 4 === 3;
+    if (isPhraseEnd) drumFills.phraseEndBars++;
+    const toms = hits.filter((n) => TOM_PITCHES.has(n.pitch)).length;
+    const snares = hits.filter((n) => SNARE_PITCHES.has(n.pitch)).length;
+    const isFill = toms >= 2 || snares >= 6;
+    if (isFill) {
+      drumFills.fillBars++;
+      if (isPhraseEnd) drumFills.phraseEndFills++;
+    }
+  }
+
   return {
     name,
     durationSec,
@@ -676,6 +707,7 @@ export function extractFeatures(name: string, midi: ParsedMidi, opts: FeatureOpt
     susShare: qualityOf(["sus4", "sus2"]),
     seventhShare: qualityOf(["maj7", "m7", "7", "dim7", "m7b5"]),
     familyStats,
+    drumFills,
   };
 }
 

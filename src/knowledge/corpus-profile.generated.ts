@@ -5,7 +5,7 @@ import type { CorpusProfile } from "../analyze/corpus";
 
 export const CORPUS_PROFILE: CorpusProfile | null = {
   "version": 3,
-  "generatedAt": "2026-11-11T05:00:23.038Z",
+  "generatedAt": "2026-11-11T05:16:35.002Z",
   "source": {
     "label": "midi-corpus",
     "files": 40,
@@ -160,7 +160,9 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
     ],
     "medianMelodyNotesPerBar": 7.38,
     "medianMelodyRange": 31,
-    "drumHitsPerBar": 12.65
+    "drumHitsPerBar": 12.65,
+    "fillBarShare": 0.292,
+    "fillPhraseEndShare": 0.274
   },
   "harmony": {
     "medianChordsPerBar": 1,
@@ -367,7 +369,7 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
 export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfile } | null = {
   "major": {
     "version": 3,
-    "generatedAt": "2026-11-11T05:00:23.042Z",
+    "generatedAt": "2026-11-11T05:16:35.007Z",
     "source": {
       "label": "midi-corpus-major",
       "files": 21,
@@ -520,7 +522,9 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
       ],
       "medianMelodyNotesPerBar": 7,
       "medianMelodyRange": 36,
-      "drumHitsPerBar": 12.57
+      "drumHitsPerBar": 12.57,
+      "fillBarShare": 0.304,
+      "fillPhraseEndShare": 0.288
     },
     "harmony": {
       "medianChordsPerBar": 1,
@@ -725,7 +729,7 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
   },
   "minor": {
     "version": 3,
-    "generatedAt": "2026-11-11T05:00:23.044Z",
+    "generatedAt": "2026-11-11T05:16:35.009Z",
     "source": {
       "label": "midi-corpus-minor",
       "files": 19,
@@ -877,7 +881,9 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
       ],
       "medianMelodyNotesPerBar": 7.67,
       "medianMelodyRange": 28,
-      "drumHitsPerBar": 14.19
+      "drumHitsPerBar": 14.19,
+      "fillBarShare": 0.278,
+      "fillPhraseEndShare": 0.256
     },
     "harmony": {
       "medianChordsPerBar": 1,

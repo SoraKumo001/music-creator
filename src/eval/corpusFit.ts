@@ -9,6 +9,7 @@ import type { Score } from "../score";
 import { programFamily } from "../analyze/features";
 import { parseKeyName } from "../theory/key";
 import { analyzeChord } from "../theory/roman";
+import { drumFillStats } from "../theory/drums";
 
 export type CorpusFitOptions = {
   /** 生成時の complexity (rich ほど逸脱を許す) */
@@ -30,6 +31,8 @@ export type CorpusFitParts = {
   sectionDensity: number;
   /** メロディの密度・音域・音域中心・順次進行がコーパスの傾向に近いか */
   melody: number;
+  /** ドラムのフィル率 (フィル小節/ドラムのある小節) がコーパスに近いか */
+  drumFills: number;
   harmonicRhythm: number;
   chordQualities: number;
   borrowed: number;
@@ -248,6 +251,18 @@ function harmonyFits(plan: Plan, p: CorpusProfile, mode: "simple" | "standard" |
   return { harmonicRhythm, chordQualities, borrowed: borrowedFit, form, notes };
 }
 
+/** ドラムのフィル率がコーパスに近いか (フィル小節/ドラムのある小節) */
+function drumFillFit(score: Score, plan: Plan, p: CorpusProfile): number {
+  const track = score.tracks.find((t) => t.channel === 9);
+  if (!track || track.notes.length === 0) return 0.5;
+  const beatsPerBar = beatsPerBarOf(plan);
+  const end = Math.max(...track.notes.map((n) => n.start + n.duration));
+  const bars = Math.max(1, Math.ceil(end / beatsPerBar));
+  const stats = drumFillStats(track.notes, bars, beatsPerBar);
+  const actual = stats.barsWithDrums === 0 ? 0 : stats.fillBars / stats.barsWithDrums;
+  return toleranceFit(actual, p.rhythm.fillBarShare, 0.08, 0.3);
+}
+
 /** メロディの密度・音域・音域中心・順次進行がコーパスの傾向に近いか */
 function melodyFit(score: Score, plan: Plan, p: CorpusProfile): number {
   const melody = score.tracks.find(
@@ -299,6 +314,7 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
     drumDensity: drumDensityFit(score, plan, profile),
     sectionDensity: sectionDensityFit(score, plan, profile),
     melody: melodyFit(score, plan, profile),
+    drumFills: drumFillFit(score, plan, profile),
     harmonicRhythm: harmony.harmonicRhythm,
     chordQualities: harmony.chordQualities,
     borrowed: harmony.borrowed,
@@ -306,7 +322,7 @@ export function evaluateCorpusFit(plan: Plan, score: Score, profile: CorpusProfi
   };
   const weights: Record<keyof CorpusFitParts, number> = {
     tempo: tempoIsInformative ? 12 : 0, mode: 8, meter: 6, instruments: 12, rhythm: 12, drums: 8, drumDensity: 6,
-    sectionDensity: 6, melody: 6, harmonicRhythm: 12, chordQualities: 10, borrowed: 6, form: 8,
+    sectionDensity: 6, melody: 6, drumFills: 4, harmonicRhythm: 12, chordQualities: 10, borrowed: 6, form: 8,
     ...opts.weights,
   };
   let sum = 0;

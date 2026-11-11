@@ -49,15 +49,24 @@ function melodyFor(plan: ReturnType<typeof PlanSchema.parse>, bars: number): Not
 if (!corpusProfile) throw new Error("corpus profile is missing");
 const corpusSus = Math.max(0.05, Math.min(0.5, corpusProfile.harmony.susShare));
 
-type Variant = { name: string; susProbability: number; useStyleFit: boolean; useDrumDensityFit: boolean; roleAware: boolean; modeProfiles: boolean };
+type Variant = {
+  name: string;
+  susProbability: number;
+  useStyleFit: boolean;
+  useDrumDensityFit: boolean;
+  roleAware: boolean;
+  modeProfiles: boolean;
+  useFillRate: boolean;
+};
 const VARIANTS: Variant[] = [
   // 既定 (コーパス忠実度優先): role-aware は opt-in
-  { name: "corpusDefault", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: true },
-  { name: "noModeProfiles", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: false },
-  { name: "roleAware", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: true, modeProfiles: true },
-  { name: "noDrumDensity", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: false, roleAware: false, modeProfiles: true },
-  { name: "legacySus", susProbability: 0.35, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: true },
-  { name: "noStyleFit", susProbability: corpusSus, useStyleFit: false, useDrumDensityFit: true, roleAware: false, modeProfiles: true },
+  { name: "corpusDefault", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: true, useFillRate: true },
+  { name: "noFillRate", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: true, useFillRate: false },
+  { name: "noModeProfiles", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: false, useFillRate: true },
+  { name: "roleAware", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: true, roleAware: true, modeProfiles: true, useFillRate: true },
+  { name: "noDrumDensity", susProbability: corpusSus, useStyleFit: true, useDrumDensityFit: false, roleAware: false, modeProfiles: true, useFillRate: true },
+  { name: "legacySus", susProbability: 0.35, useStyleFit: true, useDrumDensityFit: true, roleAware: false, modeProfiles: true, useFillRate: true },
+  { name: "noStyleFit", susProbability: corpusSus, useStyleFit: false, useDrumDensityFit: true, roleAware: false, modeProfiles: true, useFillRate: true },
 ];
 
 type Row = {
@@ -106,7 +115,12 @@ for (const file of files) {
       const beatsPerBar = (hinted.timeSignature[0] * 4) / hinted.timeSignature[1];
       const sections = resolveSections(hinted, bars, beatsPerBar);
       const melody = melodyFor(hinted, bars);
-      const score = assemble(hinted, sections, melody, bars, { seed, texture: true, arp: true });
+      const score = assemble(hinted, sections, melody, bars, {
+        seed,
+        texture: true,
+        arp: true,
+        drumFillRate: variant.useFillRate ? corpusProfile.rhythm.fillBarShare : undefined,
+      });
       const fit = evaluateCorpusFit(hinted, score, corpusProfile, {
         complexity: "standard",
         // 評価用の旋律は決定的な合成音なので、旋律項目は全条件で同じ。比較の妨げにならないよう重み0
@@ -126,7 +140,7 @@ for (const file of files) {
   }
 }
 
-const parts = ["tempo", "mode", "meter", "instruments", "rhythm", "drums", "drumDensity", "sectionDensity", "harmonicRhythm", "chordQualities", "borrowed", "form"] as const;
+const parts = ["tempo", "mode", "meter", "instruments", "rhythm", "drums", "drumDensity", "sectionDensity", "melody", "drumFills", "harmonicRhythm", "chordQualities", "borrowed", "form"] as const;
 const summarize = (variant: string) => {
   const rs = rows.filter((r) => r.variant === variant);
   return {

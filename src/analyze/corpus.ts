@@ -50,6 +50,10 @@ export type CorpusProfile = {
     medianMelodyRange: number;
     /** ドラムの1小節あたりヒット数 (中央値) */
     drumHitsPerBar: number;
+    /** ドラムのある小節のうち、フィルとみなせる小節の割合 */
+    fillBarShare: number;
+    /** フィルのうち 4小節区切りの最後に置かれる割合 */
+    fillPhraseEndShare: number;
   };
   harmony: {
     medianChordsPerBar: number;
@@ -368,6 +372,14 @@ export function aggregateFeatures(features: MidiFeatures[], opts: AggregateOptio
       medianMelodyNotesPerBar: round(median(features.map((f) => f.melodyNotesPerBar)), 2),
       medianMelodyRange: round(median(features.map((f) => f.melodyRange)), 1),
       drumHitsPerBar: round(median(features.map((f) => Object.values(f.drumHits).reduce((a, b) => a + b, 0) / Math.max(1, f.bars))), 2),
+      fillBarShare: round(
+        features.reduce((a, f) => a + f.drumFills.fillBars, 0) / Math.max(1, features.reduce((a, f) => a + f.drumFills.barsWithDrums, 0)),
+        3,
+      ),
+      fillPhraseEndShare: round(
+        features.reduce((a, f) => a + f.drumFills.phraseEndFills, 0) / Math.max(1, features.reduce((a, f) => a + f.drumFills.fillBars, 0)),
+        3,
+      ),
     },
     harmony: {
       medianChordsPerBar: round(median(harmonyFiles.map((f) => f.chordsPerBar)), 2),

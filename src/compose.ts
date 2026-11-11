@@ -56,6 +56,7 @@ import { reduceDissonances } from "./theory/dissonance";
 import { reharmonizePlan, type ReharmSuggestion } from "./theory/reharmonize";
 import {
   applyCorpusHints,
+  corpusDrumFillRateForKey,
   corpusProfile,
   corpusRuleHints,
   isCalmPrompt,
@@ -122,6 +123,8 @@ export function assemble(
     arp?: boolean;
     /** アルペジオを常時16分にする */
     arpSixteenth?: boolean;
+    /** コーパス実測のフィル率 (指定時、セクション末尾フィルを確率で間引く) */
+    drumFillRate?: number;
   } = {},
 ): Score {
   const beatsPerBar = (plan.timeSignature[0] * 4) / plan.timeSignature[1];
@@ -237,6 +240,7 @@ export function assemble(
       channel: 9,
       notes: generateDrums(sections, beatsPerBar, a.ending, a.loop, {
         seed: opts.seed,
+        fillRate: opts.drumFillRate,
       }),
     },
   ].filter((t) => t.notes.length > 0);
@@ -811,6 +815,7 @@ export async function compose(
     texture: complexity !== "simple",
     arp: isDense,
     arpSixteenth: isDense,
+    drumFillRate: corpusDrumFillRateForKey(finalPlan.key),
   });
 
   // ---- (3) 不協和音の後処理 ----

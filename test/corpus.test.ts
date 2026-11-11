@@ -71,6 +71,7 @@ function feature(overrides: Partial<MidiFeatures> = {}): MidiFeatures {
       { bars: 8, density: 70, drumTotal: 120, drumShares: { "36": 0.3, "38": 0.2, "42": 0.5 } },
       { bars: 8, density: 90, drumTotal: 160, drumShares: { "36": 0.2, "38": 0.3, "42": 0.5 } },
     ],
+    drumFills: { barsWithDrums: 32, fillBars: 6, phraseEndBars: 8, phraseEndFills: 4 },
     ...overrides,
   };
 }
@@ -97,6 +98,10 @@ describe("aggregateFeatures", () => {
     expect(profile.drumByEnergy.high.sections).toBeGreaterThan(0);
     expect(profile.drumByEnergy.low.medianHitsPerBar).toBeGreaterThan(0);
     expect(profile.insights.join(" ")).toContain("by section density");
+    // フィル統計
+    expect(profile.rhythm.fillBarShare).toBeGreaterThan(0);
+    expect(profile.rhythm.fillPhraseEndShare).toBeGreaterThan(0);
+    expect(profile.rhythm.fillPhraseEndShare).toBeLessThanOrEqual(1);
     // v2: ベース・旋律・楽器レジスタ・sus/7th の統計
     expect(profile.bass.medianNotesPerBar).toBeGreaterThan(0);
     expect(profile.bass.motionHistogram.length).toBe(12);

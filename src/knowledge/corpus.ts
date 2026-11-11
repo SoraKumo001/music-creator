@@ -45,6 +45,8 @@ export type CorpusRuleHints = {
   programs: { comp: number; bass: number; melody: number };
   /** セクション長の既定値 (小節) */
   sectionBars: number;
+  /** コーパス実測のフィル率 (ドラムのある小節のうちフィル小節の割合) */
+  drumFillRate: number;
 };
 
 const FAMILY_PROGRAM: Record<string, number> = {
@@ -161,6 +163,7 @@ export function corpusRuleHints(opts: CorpusHintOptions = {}): CorpusRuleHints |
     bassStyles,
     programs,
     sectionBars: Math.max(2, Math.round(p.form.medianSectionBars || 4)),
+    drumFillRate: p.rhythm.fillBarShare,
   };
 }
 
@@ -265,6 +268,12 @@ export function melodyTargets(mode?: "major" | "minor"): MelodyTargets | undefin
 /** 調名から採点目標を引く (プランに調性が入っている場合の便宜関数) */
 export function melodyTargetsForKey(key: string): MelodyTargets | undefined {
   return melodyTargets(parseKeyName(key).mode);
+}
+
+/** ドラムのフィル率 (プロファイル無しなら undefined = 従来どおり必ずフィル) */
+export function corpusDrumFillRateForKey(key: string): number | undefined {
+  const p = corpusProfileForMode(parseKeyName(key).mode);
+  return p ? p.rhythm.fillBarShare : undefined;
 }
 
 /** 旋律生成プロンプト用: コーパスの旋律の鳴り方を短く渡す (統計のみ) */
