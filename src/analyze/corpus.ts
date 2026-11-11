@@ -509,6 +509,11 @@ export function buildInsights(p: CorpusProfile): string[] {
       `Drum emphasis by section density (${p.drumByEnergy.densityTertiles[0]}-${p.drumByEnergy.densityTertiles[1]} onsets/bar): ${energyDrums.join("; ")}.`,
     );
   }
+  if (p.rhythm.fillBarShare > 0) {
+    out.push(
+      `Drum fills: in about ${pct(p.rhythm.fillBarShare)} of drum bars (${pct(p.rhythm.fillPhraseEndShare)} of fills land on 4-bar phrase ends).`,
+    );
+  }
   out.push(
     `Section density targets (onsets/bar): low ${p.drumByEnergy.low.medianDensity}, mid ${p.drumByEnergy.mid.medianDensity}, high ${p.drumByEnergy.high.medianDensity}.`,
   );

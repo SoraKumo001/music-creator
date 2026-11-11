@@ -108,6 +108,7 @@ describe("aggregateFeatures", () => {
     expect(profile.rhythm.fillBarShare).toBeGreaterThan(0);
     expect(profile.rhythm.fillPhraseEndShare).toBeGreaterThan(0);
     expect(profile.rhythm.fillPhraseEndShare).toBeLessThanOrEqual(1);
+    expect(profile.insights.join(" ")).toContain("Drum fills");
     // v2: ベース・旋律・楽器レジスタ・sus/7th の統計
     expect(profile.bass.medianNotesPerBar).toBeGreaterThan(0);
     expect(profile.bass.motionHistogram.length).toBe(12);

@@ -5,7 +5,7 @@ import type { CorpusProfile } from "../analyze/corpus";
 
 export const CORPUS_PROFILE: CorpusProfile | null = {
   "version": 3,
-  "generatedAt": "2026-11-11T05:17:53.049Z",
+  "generatedAt": "2026-11-11T05:19:51.526Z",
   "source": {
     "label": "midi-corpus",
     "files": 40,
@@ -360,6 +360,7 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
     "Instrument focus (by note count): synthLead 26%, guitar 21%, bass 16%, brass 8%.",
     "Drum emphasis: acousticBassDrum 4%, bassDrum 22%, snare 25%, electricSnare 4%.",
     "Drum emphasis by section density (47.33-78.8 onsets/bar): low (8.8 hits/bar): acousticBassDrum 2%, bassDrum 31%, snare 23%; mid (14.7 hits/bar): acousticBassDrum 5%, bassDrum 17%, snare 34%; high (11.8 hits/bar): acousticBassDrum 4%, bassDrum 22%, snare 18%.",
+    "Drum fills: in about 29% of drum bars (27% of fills land on 4-bar phrase ends).",
     "Section density targets (onsets/bar): low 29.5, mid 62.6, high 95.6.",
     "Rhythm: downbeat onsets 27%, off-beat 8ths 25%, 16ths 48%, other subdivisions 37%.",
     "Harmonic rhythm: about 1 chord(s) per bar; borrowed/secondary chords in about 39% of chord slots.",
@@ -377,7 +378,7 @@ export const CORPUS_PROFILE: CorpusProfile | null = {
 export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfile } | null = {
   "major": {
     "version": 3,
-    "generatedAt": "2026-11-11T05:17:53.059Z",
+    "generatedAt": "2026-11-11T05:19:51.531Z",
     "source": {
       "label": "midi-corpus-major",
       "files": 21,
@@ -730,6 +731,7 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
       "Instrument focus (by note count): synthLead 25%, bass 19%, guitar 18%, brass 9%.",
       "Drum emphasis: acousticBassDrum 6%, bassDrum 20%, snare 35%, electricSnare 3%.",
       "Drum emphasis by section density (61-84 onsets/bar): low (16.5 hits/bar): acousticBassDrum 6%, bassDrum 24%, snare 30%; mid (9.9 hits/bar): acousticBassDrum 3%, bassDrum 11%, snare 66%; high (12.5 hits/bar): acousticBassDrum 7%, bassDrum 21%, snare 15%.",
+      "Drum fills: in about 30% of drum bars (29% of fills land on 4-bar phrase ends).",
       "Section density targets (onsets/bar): low 49.1, mid 71.5, high 104.1.",
       "Rhythm: downbeat onsets 26%, off-beat 8ths 25%, 16ths 49%, other subdivisions 39%.",
       "Harmonic rhythm: about 1 chord(s) per bar; borrowed/secondary chords in about 52% of chord slots.",
@@ -745,7 +747,7 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
   },
   "minor": {
     "version": 3,
-    "generatedAt": "2026-11-11T05:17:53.063Z",
+    "generatedAt": "2026-11-11T05:19:51.533Z",
     "source": {
       "label": "midi-corpus-minor",
       "files": 19,
@@ -1092,6 +1094,7 @@ export const CORPUS_PROFILES_BY_MODE: { major: CorpusProfile; minor: CorpusProfi
       "Instrument focus (by note count): synthLead 26%, guitar 25%, bass 12%, piano 12%.",
       "Drum emphasis: bassDrum 25%, snare 14%, electricSnare 4%, closedHat 18%.",
       "Drum emphasis by section density (29.72-63.61 onsets/bar): low (7 hits/bar): acousticBassDrum 4%, bassDrum 34%, snare 14%; mid (11 hits/bar): bassDrum 23%, snare 20%, electricSnare 4%; high (13 hits/bar): bassDrum 23%, snare 12%, electricSnare 3%.",
+      "Drum fills: in about 28% of drum bars (26% of fills land on 4-bar phrase ends).",
       "Section density targets (onsets/bar): low 22.3, mid 42.8, high 83.3.",
       "Rhythm: downbeat onsets 28%, off-beat 8ths 25%, 16ths 47%, other subdivisions 35%.",
       "Harmonic rhythm: about 1 chord(s) per bar; borrowed/secondary chords in about 25% of chord slots.",
