@@ -105,6 +105,18 @@ function parallelPenalty(prev: number[], cur: number[]): number {
   return isParallel(prev, cur) ? 100 : 0;
 }
 
+/** 外声 (バスとソプラノ) の隠伏5度・8度 (並進行 + ソプラノ跳躍で完全5度/8度に到達) を避ける */
+function outerVoicePenalty(prev: number[], cur: number[]): number {
+  if (prev.length < 2 || cur.length < 2) return 0;
+  const dBass = cur[0]! - prev[0]!;
+  const dSop = cur[cur.length - 1]! - prev[prev.length - 1]!;
+  if (dBass === 0 || dSop === 0) return 0;
+  if (Math.sign(dBass) !== Math.sign(dSop)) return -1; // 反進行をわずかに優遇
+  const outerIc = Math.abs(cur[cur.length - 1]! - cur[0]!) % 12;
+  if ((outerIc === 7 || outerIc === 0) && Math.abs(dSop) > 2) return 12;
+  return 0;
+}
+
 function spacingPenalty(v: number[]): number {
   let penalty = 0;
   for (let i = 1; i < v.length; i++) if (v[i]! - v[i - 1]! > 12) penalty += 4;
@@ -149,6 +161,7 @@ export function voiceProgression(chords: Chord[], lo = LO, hi = HI): number[][] 
         const prev = cands[i - 1]![k]!;
         const total =
           cost[i - 1]![k]! + matchCost(prev, cur) + parallelPenalty(prev, cur) +
+          outerVoicePenalty(prev, cur) +
           spacingPenalty(cur) + clusterPenalty(cur) + bassPenalty(cur, chords[i]!);
         if (total < cost[i]![j]!) {
           cost[i]![j] = total;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_MELODY_TARGETS, scoreMelody, type MelodyTargets } from "../src/theory/melody";
+import { DEFAULT_MELODY_TARGETS, scoreMelody, scoreNarmourFlow, type MelodyTargets } from "../src/theory/melody";
 import type { Note } from "../src/score";
 
 /** 参照コーパスの実測値に近い目標 (range 24, ~7.4 notes/bar, 中央音域77, 順次0.48) */
@@ -61,5 +61,21 @@ describe("scoreMelody with corpus-derived targets", () => {
     // どちらも 0-100 の範囲で、目標が違えば点数も変わる
     expect(withDefault.total).toBeGreaterThan(0);
     expect(withCorpus.total).not.toBe(withDefault.total);
+  });
+});
+
+describe("scoreNarmourFlow", () => {
+  it("rewards leap-reversal gap-fill over consecutive same-direction leaps", () => {
+    // C4 -> G4 (+7 leap) -> F4 (-2 gap-fill) -> E4 (-1)
+    const gapFill = scoreNarmourFlow([60, 67, 65, 64]);
+    // C4 -> G4 (+7 leap) -> D5 (+7 leap same direction) -> A5 (+7)
+    const stackedLeaps = scoreNarmourFlow([60, 67, 74, 81]);
+    expect(gapFill).toBeGreaterThan(stackedLeaps);
+  });
+
+  it("rewards stepwise continuation (process)", () => {
+    const smooth = scoreNarmourFlow([60, 62, 64, 65, 67]);
+    const zigzag = scoreNarmourFlow([60, 67, 61, 69, 62]);
+    expect(smooth).toBeGreaterThan(zigzag);
   });
 });

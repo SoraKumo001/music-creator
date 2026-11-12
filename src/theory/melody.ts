@@ -49,6 +49,44 @@ export const DEFAULT_MELODY_TARGETS: MelodyTargets = {
   stepwiseShare: 0.55,
 };
 
+/**
+ * Narmour Implication-Realisation (NIR) モデルに基づく旋律の自然さ評価 (0-1)。
+ * - Rule A (Reversal): 大きな跳躍 (>4半音) の後は反対方向への順次進行を評価し、同方向への連続跳躍を減点
+ * - Rule B (Process): 順次進行 (1-2半音) の後は同方向・同程度のステップ継続を評価
+ * - Rule D (Proximity): 小さな音程 (1-3半音) への近接性を評価
+ */
+export function scoreNarmourFlow(pitches: number[]): number {
+  if (pitches.length < 3) return 0.5;
+  let score = 0;
+  let count = 0;
+  for (let i = 2; i < pitches.length; i++) {
+    const prevDiff = pitches[i - 1]! - pitches[i - 2]!;
+    const curDiff = pitches[i]! - pitches[i - 1]!;
+    const prevIv = Math.abs(prevDiff);
+    const curIv = Math.abs(curDiff);
+    const prevDir = Math.sign(prevDiff);
+    const curDir = Math.sign(curDiff);
+
+    let local = 0.5;
+    if (prevIv > 4) {
+      // Rule A: 跳躍後のギャップフィル (反転 + 小さな音程)
+      if (curDir !== 0 && curDir !== prevDir) local += 0.25;
+      if (curIv > 0 && curIv < 4) local += 0.2;
+      if (curIv > 4 && curDir === prevDir) local -= 0.35;
+    } else if (prevIv > 0 && prevIv < 3) {
+      // Rule B: 順次進行の継続 (プロセス)
+      if (curDir === prevDir) local += 0.2;
+      if (Math.abs(curIv - prevIv) <= 1) local += 0.15;
+    }
+    // Rule D: 近接性
+    if (curIv > 0 && curIv <= 3) local += 0.15;
+
+    score += clamp01(local);
+    count++;
+  }
+  return count > 0 ? score / count : 0.5;
+}
+
 /** メロディ候補をルールで採点する(0-100)。高いほど「曲として自然」 */
 export function scoreMelody(notes: Note[], ctx: MelodyContext, targets: MelodyTargets = DEFAULT_MELODY_TARGETS): MelodyScore {
   const total = ctx.bars * ctx.beatsPerBar;
@@ -96,7 +134,7 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext, targets: MelodyTa
   const repeats = ivs.filter((d) => d === 0).length / ivs.length;
   // 適度な跳躍(5-12半音)はフックとして歓迎(0.05-0.25)。極端な跳躍(>14)や過度な跳躍のみ減点
   const leapScore = band(expressiveLeaps, 0.05, 0.25, 0.15) * 0.15;
-  const contour = clamp01(
+  const baseContour = clamp01(
     band(
       steps,
       Math.max(0.2, targets.stepwiseShare - 0.15),
@@ -108,6 +146,8 @@ export function scoreMelody(notes: Note[], ctx: MelodyContext, targets: MelodyTa
       extremeLeaps * 2 -
       Math.max(0, repeats - 0.3),
   );
+  const narmour = scoreNarmourFlow(pitches);
+  const contour = clamp01(baseContour * 0.7 + narmour * 0.3);
 
   // フレーズの呼吸(休符): 1拍前後の休みが適度にあるか(全小節ぎっしり詰め込まれた棒演奏は減点)
   let rests = 0;
